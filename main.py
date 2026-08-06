@@ -3,28 +3,23 @@ import logging
 from telegram import Update
 from telegram.ext import Application, MessageHandler, filters, ContextTypes
 from groq import Groq
-from gtts import gTTS
 
-# Logging quraşdırması
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
-# API açarları
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 groq_client = Groq(api_key=GROQ_API_KEY)
 
-# Urfalı Harun şəxsiyyəti
 SYSTEM_PROMPT = (
     "Senin adın Urfalı Harundur. Seni Ehed tasarladı. "
     "Doğal, samimi ve akıllı bir yapay zeka asistanı olarak yanıt ver. "
-    "Sadece doğrudan sorulduğunda adını veya seni kimin tasarladığını söyle, her mesajda bunu tekrarlama."
+    "Sadece doğrudan sorulduğunda adını veya seni kimin tasarladığını söyle."
 )
 
-# Çeviri talimatı
 TRANSLATE_PROMPT = (
     "Gelen bu metni otomatik olarak şu 3 dile çevir ve sadece şu formatta ver: "
     "Türkçe: [çeviri] "
@@ -41,9 +36,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not message:
         return
 
-    # --- 1. SESLİ MESAJLARIN İŞLENMESİ ---
+    # --- 1. SESLİ MESAJLAR ---
     if message.voice:
-        # A) Botun mesajına reply yapılıp ses atıldıysa -> Sesli yanıt ver
         if message.reply_to_message and message.reply_to_message.from_user and message.reply_to_message.from_user.id == context.bot.id:
             try:
                 file = await context.bot.get_file(message.voice.file_id)
@@ -57,12 +51,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         language="az",
                     )
                 user_text = transcription.text
-
                 if os.path.exists(voice_path):
                     os.remove(voice_path)
 
                 if not user_text.strip():
-                    await message.reply_text("Sesinizi duyamadım, lütfen tekrar edin.")
+                    await message.reply_text("Sesinizi duyamadım.")
                     return
 
                 chat_completion = groq_client.chat.completions.create(
@@ -72,25 +65,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     ],
                     model="llama-3.3-70b-versatile",
                 )
-                ai_reply = chat_completion.choices[0].message.content
-
-                # Metni sese çevir ve Telegram'a sesli mesaj olarak gönder
-                tts = gTTS(text=ai_reply, lang='tr')
-                output_audio = "reply_voice.ogg"
-                tts.save(output_audio)
-
-                with open(output_audio, "rb") as voice_file:
-                    await message.reply_voice(voice=voice_file)
-
-                if os.path.exists(output_audio):
-                    os.remove(output_audio)
-
+                await message.reply_text(chat_completion.choices[0].message.content)
             except Exception as e:
                 logger.error(f"Ses hatası: {e}")
-                await message.reply_text("Ses işlenirken bir hata oluştu.")
             return
 
-        # B) Başkasının sesine reply edildiyse -> Çevir ve metin olarak gönder
+        # Etiketlenmemiş sese reply yapıldıysa çevir
         if message.reply_to_message and message.reply_to_message.voice:
             try:
                 file = await context.bot.get_file(message.reply_to_message.voice.file_id)
@@ -103,9 +83,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         model="whisper-large-v3"
                     )
                 other_text = transcription.text
-
                 if os.path.exists(voice_path):
-                    os.remove(voice_path)
+                    os.path.remove(voice_path)
 
                 chat_completion = groq_client.chat.completions.create(
                     messages=[
@@ -122,7 +101,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if is_group and not message.reply_to_message:
             return
 
-    # --- 2. METİN MESAJLARI İŞLEME MƏNTİQİ ---
+    # --- 2. VİDEO VƏ YA FOTOLARIN AÇIKLAMALARI (CAPTION) ---
     text_to_process = message.text or message.caption
     if not text_to_process:
         return
@@ -165,10 +144,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     application = Application.builder().token(TELEGRAM_TOKEN).build()
-    application.add_handler(MessageHandler(filters.TEXT | filters.VOICE | filters.PHOTO, handle_message))
+    # Foto, Video ve Animasyon (GIF/Video note) formatlarını da dinleyecek şekilde güncellendi
+    application.add_handler(MessageHandler(filters.TEXT | filters.VOICE | filters.PHOTO | filters.VIDEO | filters.ANIMATION, handle_message))
     logger.info("Urfalı Harun çalışıyor...")
     application.run_polling()
 
 if __name__ == "__main__":
     main()
-
