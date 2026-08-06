@@ -3,6 +3,7 @@ import logging
 from telegram import Update
 from telegram.ext import Application, MessageHandler, filters, ContextTypes
 from groq import Groq
+from gtts import gTTS
 
 # Logging quraşdırması
 logging.basicConfig(
@@ -18,10 +19,9 @@ groq_client = Groq(api_key=GROQ_API_KEY)
 
 # Urfalı Harun şəxsiyyəti
 SYSTEM_PROMPT = (
-    "Senin adın Urfalı Harundur. Seni Ehed tasarladı (yarattı). "
-    "Eğer biri sana adını sorarsa, mutlaka 'Benim ismim Urfalı Harun' de. "
-    "Eğer biri seni kimin yarattığını sorarsa, 'Beni Ehed tasarladı' de. "
-    "Genel sorularda akıllı bir yapay zeka asistanı olarak yardımcı ol."
+    "Senin adın Urfalı Harundur. Seni Ehed tasarladı. "
+    "Doğal, samimi ve akıllı bir yapay zeka asistanı olarak yanıt ver. "
+    "Sadece doğrudan sorulduğunda adını veya seni kimin tasarladığını söyle, her mesajda bunu tekrarlama."
 )
 
 # Çeviri talimatı
@@ -43,7 +43,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # --- 1. SESLİ MESAJLARIN İŞLENMESİ ---
     if message.voice:
-        # A) Botun mesajına reply yapılıp ses atıldıysa -> Yapay zeka gibi sesli/metinli cevap ver
+        # A) Botun mesajına reply yapılıp ses atıldıysa -> Sesli yanıt ver
         if message.reply_to_message and message.reply_to_message.from_user and message.reply_to_message.from_user.id == context.bot.id:
             try:
                 file = await context.bot.get_file(message.voice.file_id)
@@ -72,12 +72,25 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     ],
                     model="llama-3.3-70b-versatile",
                 )
-                await message.reply_text(chat_completion.choices[0].message.content)
+                ai_reply = chat_completion.choices[0].message.content
+
+                # Metni sese çevir ve Telegram'a sesli mesaj olarak gönder
+                tts = gTTS(text=ai_reply, lang='tr')
+                output_audio = "reply_voice.ogg"
+                tts.save(output_audio)
+
+                with open(output_audio, "rb") as voice_file:
+                    await message.reply_voice(voice=voice_file)
+
+                if os.path.exists(output_audio):
+                    os.remove(output_audio)
+
             except Exception as e:
                 logger.error(f"Ses hatası: {e}")
+                await message.reply_text("Ses işlenirken bir hata oluştu.")
             return
 
-        # B) Başkasının sesine reply edildiyse -> Çevir
+        # B) Başkasının sesine reply edildiyse -> Çevir ve metin olarak gönder
         if message.reply_to_message and message.reply_to_message.voice:
             try:
                 file = await context.bot.get_file(message.reply_to_message.voice.file_id)
@@ -106,7 +119,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 logger.error(f"Ses çeviri hatası: {e}")
             return
 
-        # Ortaya atılan rastgele seslere karışma
         if is_group and not message.reply_to_message:
             return
 
@@ -115,7 +127,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not text_to_process:
         return
 
-    # Bot etiketlənibmi yoxla
     is_mentioned = False
     if f"@{bot_username}" in text_to_process:
         is_mentioned = True
@@ -127,7 +138,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     is_mentioned = True
 
     if is_mentioned:
-        # Etiketlənibsə: Süni zeka kimi cavab ver
         clean_text = text_to_process.replace(f"@{bot_username}", "").strip()
         try:
             chat_completion = groq_client.chat.completions.create(
@@ -141,7 +151,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logger.error(f"AI hatası: {e}")
     else:
-        # Etiketlənməyibsə: Qrupdaki bütün mesajları avtomatik çevir
         try:
             chat_completion = groq_client.chat.completions.create(
                 messages=[
