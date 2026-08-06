@@ -3,7 +3,6 @@ import logging
 from telegram import Update
 from telegram.ext import Application, MessageHandler, filters, ContextTypes
 from groq import Groq
-from gtts import gTTS
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
@@ -37,89 +36,35 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not message:
         return
 
-    # --- 1. SƏSLİ MESAJLAR ---
-    if message.voice:
-        # A) Botun mesajına səsli reply edilibsə -> Səsli cavab ver
-        if message.reply_to_message and message.reply_to_message.from_user and message.reply_to_message.from_user.id == context.bot.id:
-            try:
-                file = await context.bot.get_file(message.voice.file_id)
-                voice_path = "temp_voice.ogg"
-                await file.download_to_drive(voice_path)
+    text_to_process = ""
 
-                with open(voice_path, "rb") as audio_file:
-                    transcription = groq_client.audio.transcriptions.create(
-                        file=(voice_path, audio_file.read()),
-                        model="whisper-large-v3",
-                        language="az",
-                    )
-                user_text = transcription.text
-                if os.path.exists(voice_path):
-                    os.remove(voice_path)
+    # --- 1. SƏSLİ MESAJ VƏ YA VİDEONUN İÇİNDƏKİ SƏS ---
+    if message.voice or message.video or message.video_note:
+        try:
+            media_file = message.voice or message.video or message.video_note
+            file = await context.bot.get_file(media_file.file_id)
+            file_path = "temp_media.mp4"
+            await file.download_to_drive(file_path)
 
-                if not user_text.strip():
-                    await message.reply_text("Səsinizi eşidə bilmədim.")
-                    return
-
-                chat_completion = groq_client.chat.completions.create(
-                    messages=[
-                        {"role": "system", "content": SYSTEM_PROMPT},
-                        {"role": "user", "content": user_text}
-                    ],
-                    model="llama-3.3-70b-versatile",
+            with open(file_path, "rb") as audio_file:
+                transcription = groq_client.audio.transcriptions.create(
+                    file=(file_path, audio_file.read()),
+                    model="whisper-large-v3"
                 )
-                ai_reply = chat_completion.choices[0].message.content
+            text_to_process = transcription.text
+            if os.path.exists(file_path):
+                os.remove(file_path)
+        except Exception as e:
+            logger.error(f"Media səs xətası: {e}")
 
-                # Cavabı səsli mesaja çevirib göndəririk
-                tts = gTTS(text=ai_reply, lang='tr')
-                output_audio = "reply_voice.ogg"
-                tts.save(output_audio)
+    # --- 2. MƏTN VƏ YA CAPTION ---
+    if not text_to_process:
+        text_to_process = message.text or message.caption
 
-                with open(output_audio, "rb") as voice_file:
-                    await message.reply_voice(voice=voice_file)
-
-                if os.path.exists(output_audio):
-                    os.remove(output_audio)
-
-            except Exception as e:
-                logger.error(f"Səs xətası: {e}")
-            return
-
-        # B) Başqasının səsinə reply edilibsə -> 3 dilə tərcümə et
-        if message.reply_to_message and message.reply_to_message.voice:
-            try:
-                file = await context.bot.get_file(message.reply_to_message.voice.file_id)
-                voice_path = "other_voice.ogg"
-                await file.download_to_drive(voice_path)
-
-                with open(voice_path, "rb") as audio_file:
-                    transcription = groq_client.audio.transcriptions.create(
-                        file=(voice_path, audio_file.read()),
-                        model="whisper-large-v3"
-                    )
-                other_text = transcription.text
-                if os.path.exists(voice_path):
-                    os.remove(voice_path)
-
-                chat_completion = groq_client.chat.completions.create(
-                    messages=[
-                        {"role": "system", "content": TRANSLATE_PROMPT},
-                        {"role": "user", "content": other_text}
-                    ],
-                    model="llama-3.3-70b-versatile",
-                )
-                await message.reply_text(chat_completion.choices[0].message.content)
-            except Exception as e:
-                logger.error(f"Səs tərcümə xətası: {e}")
-            return
-
-        if is_group and not message.reply_to_message:
-            return
-
-    # --- 2. MƏTN, FOTO VƏ VİDEO AÇIQLAMALARI (CAPTION) ---
-    text_to_process = message.text or message.caption
     if not text_to_process:
         return
 
+    # --- 3. ETİKETLƏNMƏ VƏ YA CAVAB (REPLY) YOXLAMASI ---
     is_mentioned = False
     if f"@{bot_username}" in text_to_process:
         is_mentioned = True
@@ -130,13 +75,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if mention_text.lower() == f"@{bot_username}".lower():
                     is_mentioned = True
 
-    if is_mentioned:
+    # Eğer bota reply yapıldıysa veya etiketlendiyse yapay zeka gibi cevap ver
+    is_reply_to_bot = message.reply_to_message and message.reply_to_message.from_user and message.reply_to_message.from_user.id == context.bot.id
+
+    if is_mentioned or is_reply_to_bot:
         clean_text = text_to_process.replace(f"@{bot_username}", "").strip()
         try:
             chat_completion = groq_client.chat.completions.create(
                 messages=[
                     {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": clean_text}
+                    {"role": "user", "content": clean_text if clean_text else "Merhaba"}
                 ],
                 model="llama-3.3-70b-versatile",
             )
@@ -144,6 +92,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logger.error(f"AI xətası: {e}")
     else:
+        # Etiketlenmediyse ve reply değilse gelen her şeyi (video sesi dahil) 3 dile çevir
         try:
             chat_completion = groq_client.chat.completions.create(
                 messages=[
@@ -158,9 +107,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     application = Application.builder().token(TELEGRAM_TOKEN).build()
-    application.add_handler(MessageHandler(filters.TEXT | filters.VOICE | filters.PHOTO | filters.VIDEO | filters.ANIMATION, handle_message))
-    logger.info("Urfalı Harun 7/24 işləyir...")
+    application.add_handler(MessageHandler(filters.TEXT | filters.VOICE | filters.PHOTO | filters.VIDEO | filters.ANIMATION | filters.VIDEO_NOTE, handle_message))
+    logger.info("Urfalı Harun işləyir...")
     application.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
     main()
+
