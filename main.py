@@ -1,4 +1,3 @@
-
 import os
 import logging
 from telegram import Update
@@ -17,16 +16,20 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 groq_client = Groq(api_key=GROQ_API_KEY)
 
-# Urfalı Harun şəxsiyyəti və tərcümə/cavablandırma təlimatı
+# Urfalı Harun şəxsiyyəti
 SYSTEM_PROMPT = (
     "Senin adın Urfalı Harundur. Seni Ehed tasarladı (yarattı). "
     "Eğer biri sana adını sorarsa, mutlaka 'Benim ismim Urfalı Harun' de. "
     "Eğer biri seni kimin yarattığını sorarsa, 'Beni Ehed tasarladı' de. "
-    "Sen aynı zamanda profesyonel bir çevirmen ve akıllı bir asistansın: "
-    "- Türkçe yazılanları Almanca ve Rusçaya, "
-    "- Almanca yazılanları Türkçe ve Rusçaya, "
-    "- Rusça yazılanları Almanca ve Türkçeye çevirebilirsin. "
-    "Metinde özel bir dil çevirisi isteniyorsa çeviriyi yap. Genel sorularda ise bir yapay zeka asistanı olarak yardımcı ol."
+    "Genel sorularda akıllı bir yapay zeka asistanı olarak yardımcı ol."
+)
+
+# Çeviri talimatı
+TRANSLATE_PROMPT = (
+    "Gelen bu metni otomatik olarak şu 3 dile çevir ve sadece şu formatta ver: "
+    "Türkçe: [çeviri] "
+    "Almanca: [çeviri] "
+    "Rusça: [çeviri]"
 )
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -40,7 +43,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # --- 1. SESLİ MESAJLARIN İŞLENMESİ ---
     if message.voice:
-        # A) Botun kendi mesajına reply (yanıt) olarak ses atıldıysa
+        # A) Botun mesajına reply yapılıp ses atıldıysa -> Yapay zeka gibi sesli/metinli cevap ver
         if message.reply_to_message and message.reply_to_message.from_user and message.reply_to_message.from_user.id == context.bot.id:
             try:
                 file = await context.bot.get_file(message.voice.file_id)
@@ -69,15 +72,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     ],
                     model="llama-3.3-70b-versatile",
                 )
-                ai_reply = chat_completion.choices[0].message.content
-                await message.reply_text(ai_reply)
-
+                await message.reply_text(chat_completion.choices[0].message.content)
             except Exception as e:
                 logger.error(f"Ses hatası: {e}")
-                await message.reply_text("Sesiniz işlenirken bir hata oluştu.")
             return
 
-        # B) Grupta başkasının sesli mesajı reply edildiyse (Çeviri için)
+        # B) Başkasının sesine reply edildiyse -> Çevir
         if message.reply_to_message and message.reply_to_message.voice:
             try:
                 file = await context.bot.get_file(message.reply_to_message.voice.file_id)
@@ -96,8 +96,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
                 chat_completion = groq_client.chat.completions.create(
                     messages=[
-                        {"role": "system", "content": SYSTEM_PROMPT},
-                        {"role": "user", "content": f"Bu sesli mesajı Türkçe, Almanca ve Rusça dillere çevir: {other_text}"}
+                        {"role": "system", "content": TRANSLATE_PROMPT},
+                        {"role": "user", "content": other_text}
                     ],
                     model="llama-3.3-70b-versatile",
                 )
@@ -106,32 +106,29 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 logger.error(f"Ses çeviri hatası: {e}")
             return
 
-        # Grupta ortaya atılan rastgele seslere karışmasın
+        # Ortaya atılan rastgele seslere karışma
         if is_group and not message.reply_to_message:
             return
 
-    # --- 2. METİN MESAJLARI İÇİN (YALNIZCA ETİKETLENDİĞİNDE) ---
-    if is_group:
-        is_mentioned = False
-        if message.text and f"@{bot_username}" in message.text:
-            is_mentioned = True
-        elif message.caption and f"@{bot_username}" in message.caption:
-            is_mentioned = True
-        elif message.entities:
-            for entity in message.entities:
-                if entity.type == "mention":
-                    mention_text = message.text[entity.offset : entity.offset + entity.length]
-                    if mention_text.lower() == f"@{bot_username}".lower():
-                        is_mentioned = True
-
-        if not is_mentioned:
-            return
-
-    # --- 3. METİNLERE VE ÇEVİRİLERE AI CEVABI ---
+    # --- 2. METİN MESAJLARI İŞLEME MƏNTİQİ ---
     text_to_process = message.text or message.caption
-    if text_to_process:
-        clean_text = text_to_process.replace(f"@{bot_username}", "").strip()
+    if not text_to_process:
+        return
 
+    # Bot etiketlənibmi yoxla
+    is_mentioned = False
+    if f"@{bot_username}" in text_to_process:
+        is_mentioned = True
+    elif message.entities:
+        for entity in message.entities:
+            if entity.type == "mention":
+                mention_text = text_to_process[entity.offset : entity.offset + entity.length]
+                if mention_text.lower() == f"@{bot_username}".lower():
+                    is_mentioned = True
+
+    if is_mentioned:
+        # Etiketlənibsə: Süni zeka kimi cavab ver
+        clean_text = text_to_process.replace(f"@{bot_username}", "").strip()
         try:
             chat_completion = groq_client.chat.completions.create(
                 messages=[
@@ -140,11 +137,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 ],
                 model="llama-3.3-70b-versatile",
             )
-            ai_response = chat_completion.choices[0].message.content
-            await message.reply_text(ai_response)
+            await message.reply_text(chat_completion.choices[0].message.content)
         except Exception as e:
             logger.error(f"AI hatası: {e}")
-            await message.reply_text("İsteğiniz işlenirken bir hata oluştu.")
+    else:
+        # Etiketlənməyibsə: Qrupdaki bütün mesajları avtomatik çevir
+        try:
+            chat_completion = groq_client.chat.completions.create(
+                messages=[
+                    {"role": "system", "content": TRANSLATE_PROMPT},
+                    {"role": "user", "content": text_to_process}
+                ],
+                model="llama-3.3-70b-versatile",
+            )
+            await message.reply_text(chat_completion.choices[0].message.content)
+        except Exception as e:
+            logger.error(f"Çeviri hatası: {e}")
 
 def main():
     application = Application.builder().token(TELEGRAM_TOKEN).build()
