@@ -3,6 +3,7 @@ import logging
 from telegram import Update
 from telegram.ext import Application, MessageHandler, filters, ContextTypes
 from groq import Groq
+from gtts import gTTS
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
@@ -36,8 +37,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not message:
         return
 
-    # --- 1. SESLİ MESAJLAR ---
+    # --- 1. SƏSLİ MESAJLAR ---
     if message.voice:
+        # A) Botun mesajına səsli reply edilibsə -> Səsli cavab ver
         if message.reply_to_message and message.reply_to_message.from_user and message.reply_to_message.from_user.id == context.bot.id:
             try:
                 file = await context.bot.get_file(message.voice.file_id)
@@ -55,7 +57,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     os.remove(voice_path)
 
                 if not user_text.strip():
-                    await message.reply_text("Sesinizi duyamadım.")
+                    await message.reply_text("Səsinizi eşidə bilmədim.")
                     return
 
                 chat_completion = groq_client.chat.completions.create(
@@ -65,12 +67,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     ],
                     model="llama-3.3-70b-versatile",
                 )
-                await message.reply_text(chat_completion.choices[0].message.content)
+                ai_reply = chat_completion.choices[0].message.content
+
+                # Cavabı səsli mesaja çevirib göndəririk
+                tts = gTTS(text=ai_reply, lang='tr')
+                output_audio = "reply_voice.ogg"
+                tts.save(output_audio)
+
+                with open(output_audio, "rb") as voice_file:
+                    await message.reply_voice(voice=voice_file)
+
+                if os.path.exists(output_audio):
+                    os.remove(output_audio)
+
             except Exception as e:
-                logger.error(f"Ses hatası: {e}")
+                logger.error(f"Səs xətası: {e}")
             return
 
-        # Etiketlenmemiş sese reply yapıldıysa çevir
+        # B) Başqasının səsinə reply edilibsə -> 3 dilə tərcümə et
         if message.reply_to_message and message.reply_to_message.voice:
             try:
                 file = await context.bot.get_file(message.reply_to_message.voice.file_id)
@@ -84,7 +98,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     )
                 other_text = transcription.text
                 if os.path.exists(voice_path):
-                    os.path.remove(voice_path)
+                    os.remove(voice_path)
 
                 chat_completion = groq_client.chat.completions.create(
                     messages=[
@@ -95,13 +109,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
                 await message.reply_text(chat_completion.choices[0].message.content)
             except Exception as e:
-                logger.error(f"Ses çeviri hatası: {e}")
+                logger.error(f"Səs tərcümə xətası: {e}")
             return
 
         if is_group and not message.reply_to_message:
             return
 
-    # --- 2. VİDEO VƏ YA FOTOLARIN AÇIKLAMALARI (CAPTION) ---
+    # --- 2. MƏTN, FOTO VƏ VİDEO AÇIQLAMALARI (CAPTION) ---
     text_to_process = message.text or message.caption
     if not text_to_process:
         return
@@ -128,7 +142,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             await message.reply_text(chat_completion.choices[0].message.content)
         except Exception as e:
-            logger.error(f"AI hatası: {e}")
+            logger.error(f"AI xətası: {e}")
     else:
         try:
             chat_completion = groq_client.chat.completions.create(
@@ -140,14 +154,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             await message.reply_text(chat_completion.choices[0].message.content)
         except Exception as e:
-            logger.error(f"Çeviri hatası: {e}")
+            logger.error(f"Tərcümə xətası: {e}")
 
 def main():
     application = Application.builder().token(TELEGRAM_TOKEN).build()
-    # Foto, Video ve Animasyon (GIF/Video note) formatlarını da dinleyecek şekilde güncellendi
     application.add_handler(MessageHandler(filters.TEXT | filters.VOICE | filters.PHOTO | filters.VIDEO | filters.ANIMATION, handle_message))
-    logger.info("Urfalı Harun çalışıyor...")
-    application.run_polling()
+    logger.info("Urfalı Harun 7/24 işləyir...")
+    application.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
     main()
