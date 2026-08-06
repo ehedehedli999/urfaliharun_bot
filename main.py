@@ -1,5 +1,6 @@
 import os
 import logging
+from datetime import datetime
 from telegram import Update
 from telegram.ext import Application, MessageHandler, filters, ContextTypes
 from groq import Groq
@@ -16,8 +17,11 @@ groq_client = Groq(api_key=GROQ_API_KEY)
 
 SYSTEM_PROMPT = (
     "Senin adın Urfalı Harundur. Seni Ehed tasarladı. "
-    "Doğal, samimi ve akıllı bir yapay zeka asistanı olarak yanıt ver. "
-    "Sadece doğrudan sorulduğunda adını veya seni kimin tasarladığını söyle."
+    "Doğal, samimi ve akıllı bir yapay zeka asistanısın. "
+    "Sana hangi dilde (Rusça, İngilizce, Türkçe vb.) soru sorulursa sorulsun, "
+    "kesinlikle kullanıcının sorduğu dilde akıcı bir şekilde yanıt ver. "
+    "Sadece doğrudan sorulduğunda adını veya seni kimin tasarladığını söyle. "
+    f"Şu anki tarih ve saat: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}."
 )
 
 TRANSLATE_PROMPT = (
@@ -57,14 +61,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logger.error(f"Media səs xətası: {e}")
 
-    # --- 2. MƏTN VƏ YA CAPTION ---
     if not text_to_process:
         text_to_process = message.text or message.caption
 
     if not text_to_process:
         return
 
-    # --- 3. ETİKETLƏNMƏ VƏ YA CAVAB (REPLY) YOXLAMASI ---
     is_mentioned = False
     if f"@{bot_username}" in text_to_process:
         is_mentioned = True
@@ -75,7 +77,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if mention_text.lower() == f"@{bot_username}".lower():
                     is_mentioned = True
 
-    # Eğer bota reply yapıldıysa veya etiketlendiyse yapay zeka gibi cevap ver
     is_reply_to_bot = message.reply_to_message and message.reply_to_message.from_user and message.reply_to_message.from_user.id == context.bot.id
 
     if is_mentioned or is_reply_to_bot:
@@ -92,7 +93,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logger.error(f"AI xətası: {e}")
     else:
-        # Etiketlenmediyse ve reply değilse gelen her şeyi (video sesi dahil) 3 dile çevir
         try:
             chat_completion = groq_client.chat.completions.create(
                 messages=[
@@ -113,4 +113,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
