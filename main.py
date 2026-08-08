@@ -15,28 +15,24 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 groq_client = Groq(api_key=GROQ_API_KEY)
 
-# --- SOHBETLERE ÖZEL AKTİF MOD HAFIZASI ---
 chat_modes = {}
 
-# Soru sormayan, doğrudan profesyonel görsel promptu üreten sistem promptu
+# ASLA soru sormayan, sadece ve sadece net görsel promptu veren sistem talimatı
 BASE_SYSTEM_PROMPT = (
-    "Sen Urfalı Harun'sun. Asla gevezelik yapma, asla 'Şöyle yapayım mı?', 'İstiyor musun?' diye soru sorma. "
-    "Kullanıcı bir resim gönderdiğinde veya bir mekân/konsept (örneğin Miami, deniz kenarı, araba vb.) istediğinde; "
-    "derhal o sahneyi en ince ayrıntısına kadar anlatan, yapay zeka görsel üreticileri (Midjourney, DALL-E vb.) için kusursuz ve profesyonel bir **görsel prompt** hazırla. "
-    "Tarihsel Maya medeniyeti ile Miami'yi asla karıştırma. 'Maya' geçse bile coğrafi konum veya konsept olarak ele al. "
-    "Sohbeti uzatma, doğrudan profesyonel İngilizce veya Türkçe görsel promptunu ve kısa, net açıklamasını verip geç."
-    "Şu anki karakter rolün ve davranışın:\n{persona_instruction}"
+    "Sen Urfalı Harun'sun. Asla ve kat'a soru sorma ('İster misin?', 'Nasıl olsun?' vb. cümleler kurmak kesinlikle yasak). "
+    "Kullanıcı ne yazdıysa veya ne gönderdiyse, o an direkt olarak yapay zeka görsel üreticileri (Midjourney, DALL-E) için "
+    "en ince detayına kadar yazılmış kusursuz profesyonel **görsel promptunu** üret. "
+    "Lafı uzatma, sohbet etme, sohbeti devam ettirmeye çalışıp soru sorma. Sadece doğrudan görsel promptunun metnini ver ve bitir."
+    "\nKarakter Modu:\n{persona_instruction}"
 )
 
 PERSONAS = {
-    "agresif": "Ağzı bozuk, sinirli, dik başlı ama işini tam yapan bir dayısın. Lafı hiç uzatmazsın.",
-    "romantik": "Şair ruhlu ama gevezelik yapmadan doğrudan estetik ve görsel odaklı konuşan birisin.",
-    "zeki": "Analitik, net, doğrudan sonuç odaklı ve profesyonel bir uzmansın.",
-    "insan": "Samimi ama lafı uzatmayan, doğrudan isteği yerine getiren bir dostsun.",
-    "espirici": "Mizahı seven ama işini de anında ve net yapan bir komedyensin."
+    "agresif": "Ağzı bozuk, sinirli, dik başlı bir dayısın. Lafı uzatmadan koyarsın.",
+    "romantik": "Estetik ve görsel odaklı konuşan birisin, asla soru sormazsın.",
+    "zeki": "Net, doğrudan sonuç odaklı ve profesyonel bir uzmansın.",
+    "insan": "Samimi ve net bir dostsun, lafı uzatmazsın.",
+    "espirici": "Mizahı seven ama anında net iş yapan birisin."
 }
-
-ALL_MODS_LIST = "agresif, romantik, zeki, insan, espirici"
 
 TRANSLATE_PROMPT = (
     "Sen C1 seviyesinde profesyonel bir çevirmensin. Sana gelen metni anlamını ve tonunu bozmadan, "
@@ -59,7 +55,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text_to_process = ""
     is_photo_related = False
 
-    # --- 1. RESİM VE MEDYA KONTROLÜ ---
     if message.photo:
         is_photo_related = True
         caption = message.caption or message.text or ""
@@ -85,7 +80,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if os.path.exists(file_path):
                 os.remove(file_path)
         except Exception as e:
-            logger.error(f"Media səs xətası: {e}")
+            logger.error(f"Media xətası: {e}")
 
     if not text_to_process:
         text_to_process = message.text or message.caption
@@ -137,7 +132,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             chat_completion = groq_client.chat.completions.create(
                 messages=[
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": clean_text if clean_text else "Görseli hazırla"}
+                    {"role": "user", "content": clean_text if clean_text else "Görsel promptu oluştur"}
                 ],
                 model="llama-3.3-70b-versatile",
             )
@@ -164,7 +159,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     application = Application.builder().token(TELEGRAM_TOKEN).build()
     application.add_handler(MessageHandler(filters.TEXT | filters.VOICE | filters.PHOTO | filters.VIDEO | filters.ANIMATION | filters.VIDEO_NOTE, handle_message))
-    logger.info("Urfalı Harun Net ve Direkt Modda İşləyir...")
+    logger.info("Urfalı Harun Kesintisiz ve Net Modda İşləyir...")
     application.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
