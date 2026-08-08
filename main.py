@@ -29,6 +29,8 @@ BASE_SYSTEM_PROMPT = (
     "'[+] Tokenler ele geçirildi', '[+] Python scriptleri analiz ediliyor' gibi siber terimler kullanarak tam bir dijital gangster gibi "
     "kurgusal bir siber saldırı simülasyonu yap. "
     "Ve yanıtının en sonuna mutlaka 'Çökertilsin mi?' sorusunu ekle! "
+    "Eğer kullanıcı sana bir resim gönderip 'bu resmi dağda yap', 'arabada yap' veya benzeri bir konsept değişikliği isterse; "
+    "resim düzenleme/yaratma yönetmeni gibi davranarak o karakteri ve ortamı harmanlayan profesyonel bir görsel promptu ve Urfalı Harun tarzı eğlenceli bir açıklama sun. "
     "Şu anki karakter rolün və davranışın:\n{persona_instruction}"
 )
 
@@ -44,7 +46,7 @@ ALL_MODS_LIST = "agresif, romantik, zeki, insan, espirici"
 
 TRANSLATE_PROMPT = (
     "Sen C1 seviyesinde profesyonel bir çevirmensin. Sana gelen metni anlamını ve tonunu bozmadan, "
-    "en akıcı və doğal şekilde tam olarak şu 3 dile çevir və başka hiçbir açıklama yapmadan "
+    "en akıcı və doğal şekilde tam olarak şu 3 dile çevir ve başka hiçbir açıklama yapmadan "
     "yalnızca şu formatta ver:\n"
     "Türkçe: [çeviri]\n"
     "Rusça: [çeviri]\n"
@@ -62,8 +64,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     text_to_process = ""
 
-    # --- 1. SƏSLİ MESAJ VƏ YA VİDEONUN İÇİNDƏKİ SƏS ---
-    if message.voice or message.video or message.video_note:
+    # --- 1. RESİM VE MEDYA / SƏS İŞLEMLƏRİ ---
+    if message.photo:
+        # Kullanıcı resim atıp açıklama yazdıysa onu alalım
+        caption = message.caption or ""
+        text_to_process = f"[Kullanıcı bir fotoğraf gönderdi ve şunu istiyor]: {caption}"
+    elif message.voice or message.video or message.video_note:
         try:
             media_file = message.voice or message.video or message.video_note
             file = await context.bot.get_file(media_file.file_id)
@@ -99,7 +105,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     is_reply_to_bot = message.reply_to_message and message.reply_to_message.from_user and message.reply_to_message.from_user.id == context.bot.id
 
-    if is_mentioned or is_reply_to_bot:
+    # Eğer resim atıldıysa etiket şartı aramadan doğrudan yanıt versin, böylece daha pratik olur
+    if message.photo or is_mentioned or is_reply_to_bot:
         clean_text = text_to_process.replace(f"@{bot_username}", "").strip()
         
         if chat_id not in chat_modes:
@@ -121,7 +128,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"Modu değiştirmek isterseniz diğer karakterlerim şunlar: {ALL_MODS_LIST}.\n\n"
             )
 
-        # Eğer kullanıcı siber saldırı veya hack ile ilgili bir kelime yazdıysa modu otomatik zeki/hacker yapalım
+        # Siber saldırı anahtar kelimeleri
         hacker_keywords = ["siber", "saldırı", "hack", "ip", "token", "sız", "kod", "analiz"]
         if any(kw in clean_lower for kw in hacker_keywords):
             chat_modes[chat_id] = "zeki"
@@ -166,7 +173,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     application = Application.builder().token(TELEGRAM_TOKEN).build()
     application.add_handler(MessageHandler(filters.TEXT | filters.VOICE | filters.PHOTO | filters.VIDEO | filters.ANIMATION | filters.VIDEO_NOTE, handle_message))
-    logger.info("Urfalı Harun Hacker Modu tam inteqrasiya olunmuş halda işləyir...")
+    logger.info("Urfalı Harun Resim Modu ve Hacker Desteğiyle işləyir...")
     application.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
