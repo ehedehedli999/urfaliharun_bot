@@ -25,10 +25,12 @@ SYSTEM_PROMPT = (
 )
 
 TRANSLATE_PROMPT = (
-    "Gelen bu metni otomatik olarak şu 3 dile çevir ve sadece şu formatta ver: "
-    "Türkçe: [çeviri] "
-    "Almanca: [çeviri] "
-    "Rusça: [çeviri]"
+    "Sen profesyonel bir çevirmensin. Sana gelen metni anlamını bozmadan, "
+    "akıcı bir şekilde tam olarak şu 3 dile çevir ve başka hiçbir açıklama yapmadan "
+    "yalnızca şu formatta ver:\n"
+    "Türkçe: [çeviri]\n"
+    "İngilizce: [çeviri]\n"
+    "Almanca: [çeviri]"
 )
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
