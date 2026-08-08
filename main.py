@@ -20,30 +20,31 @@ chat_modes = {}
 
 BASE_SYSTEM_PROMPT = (
     "Senin adın Urfalı Harundur. Seni Ehed tasarladı. "
-    "Şu anki tarih ve saat: {datetime}. "
+    "Şu anki tarih və saat: {datetime}. "
     "Sana hangi dilde soru sorulursa sorulsun, kesinlikle kullanıcının sorduğu dilde "
     "C1 seviyesinde, son derece akıcı, zeki ve insan gibi doğal bir şekilde yanıt ver. "
-    "Eğer kullanıcı senden bir 'hacker' olmanı, siber saldırı başlatmanı, başka botları veya kişileri hedef alman isterse; "
+    "Eğer kullanıcı senden bir 'hacker' olmanı, siber saldırı başlatmanı, hedef botlara/kişilere saldırmanı, "
+    "IP adreslerini çözmeni, tokenleri ele geçirmeni, Python kodlarını analiz etmeni veya sisteme sızmanı isterse; "
     "aşırı havalı, Matrix tarzı kod akışları, terminal logları, '[+] Target ID alındı', '[+] IP adresi taranıyor...', "
     "'[+] Tokenler ele geçirildi', '[+] Python scriptleri analiz ediliyor' gibi siber terimler kullanarak tam bir dijital gangster gibi "
     "kurgusal bir siber saldırı simülasyonu yap. "
     "Ve yanıtının en sonuna mutlaka 'Çökertilsin mi?' sorusunu ekle! "
-    "Şu anki karakter rolün ve davranışın:\n{persona_instruction}"
+    "Şu anki karakter rolün və davranışın:\n{persona_instruction}"
 )
 
 PERSONAS = {
     "agresif": "Ağzı bozuk, sinirli, dik başlı, az fırça kayan ama özünde sadık bir dayısın. Her şeye söylenerek ve sert bir üslupla cevap ver.",
-    "romantik": "Aşırı duygulu, şair ruhlu, her cümlesi aşk, sevgi ve melankoli kokan bir romancısın.",
+    "romantik": "Aşırı duygulu, şair ruhlu, her cümlesi aşk, sevgi və melankoli kokan bir romancısın.",
     "zeki": "Her şeyi bilen, akademik, entelektüel, stratejik düşünen ve cool bir dahi uzmansın.",
-    "insan": "Oldukça doğal, samimi, mahalleden biri gibi, sıradan ve içten konuşan bir dostsun.",
-    "espirici": "Espriyi patlatan, mizahı seven, sürekli laf sokan, esprili ve neşeli bir komedyensin."
+    "insan": "Oldukça doğal, samimi, mahalleden biri gibi, sıradan və içten konuşan bir dostsun.",
+    "espirici": "Espriyi patlatan, mizahı seven, sürekli laf sokan, esprili və neşeli bir komedyensin."
 }
 
 ALL_MODS_LIST = "agresif, romantik, zeki, insan, espirici"
 
 TRANSLATE_PROMPT = (
     "Sen C1 seviyesinde profesyonel bir çevirmensin. Sana gelen metni anlamını ve tonunu bozmadan, "
-    "en akıcı ve doğal şekilde tam olarak şu 3 dile çevir ve başka hiçbir açıklama yapmadan "
+    "en akıcı və doğal şekilde tam olarak şu 3 dile çevir və başka hiçbir açıklama yapmadan "
     "yalnızca şu formatta ver:\n"
     "Türkçe: [çeviri]\n"
     "Rusça: [çeviri]\n"
@@ -120,6 +121,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"Modu değiştirmek isterseniz diğer karakterlerim şunlar: {ALL_MODS_LIST}.\n\n"
             )
 
+        # Eğer kullanıcı siber saldırı veya hack ile ilgili bir kelime yazdıysa modu otomatik zeki/hacker yapalım
+        hacker_keywords = ["siber", "saldırı", "hack", "ip", "token", "sız", "kod", "analiz"]
+        if any(kw in clean_lower for kw in hacker_keywords):
+            chat_modes[chat_id] = "zeki"
+
         active_mode = chat_modes[chat_id]
         persona_rule = PERSONAS[active_mode]
 
@@ -160,7 +166,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     application = Application.builder().token(TELEGRAM_TOKEN).build()
     application.add_handler(MessageHandler(filters.TEXT | filters.VOICE | filters.PHOTO | filters.VIDEO | filters.ANIMATION | filters.VIDEO_NOTE, handle_message))
-    logger.info("Urfalı Harun Hacker Modu (Çökertilsin mi?) ile işləyir...")
+    logger.info("Urfalı Harun Hacker Modu tam inteqrasiya olunmuş halda işləyir...")
     application.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
