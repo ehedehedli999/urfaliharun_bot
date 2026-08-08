@@ -19,12 +19,13 @@ groq_client = Groq(api_key=GROQ_API_KEY)
 chat_modes = {}
 
 BASE_SYSTEM_PROMPT = (
-    "Senin adın Urfalı Harundur. Seni Ehed tasarladı.[span_0](start_span)[span_0](end_span)"
+    "Senin adın Urfalı Harundur. Seni Ehed tasarladı. "
     "Şu anki tarih ve saat: {datetime}. "
     "Sana hangi dilde soru sorulursa sorulsun, kesinlikle kullanıcının sorduğu dilde "
     "C1 seviyesinde, son derece akıcı, zeki ve insan gibi doğal bir şekilde yanıt ver. "
-    "Eğer kullanıcı sana bir resim gönderdiyse veya bir resim üzerinde değişiklik (örneğin 'bu resmi dağda yap', 'arabada yap', 'deniz kenarında yap') istediyse; "
-    "resim düzenleme/yaratma yönetmeni gibi davranarak o karakteri ve ortamı harmanlayan profesyonel bir görsel promptu ve Urfalı Harun tarzı eğlenceli bir açıklama sun. "
+    "Eğer kullanıcı sana bir resim gönderdiyse veya bir resim üzerinde değişiklik (örneğin 'Miami', 'dağ', 'araba', 'deniz kenarı' gibi mekân ve konseptler) istediyse; "
+    "asla tarihsel Maya medeniyeti, piramitler veya Meksika ile karıştırma! 'Maya' kelimesi geçse bile bunu tamamen Miami veya istenen coğrafi mekân/konsept olarak algıla. "
+    "Resim düzenleme/yaratma yönetmeni gibi davranarak o karakteri ve ortamı harmanlayan profesyonel bir görsel promptu ve Urfalı Harun tarzı eğlenceli, net bir açıklama sun. "
     "Şu anki karakter rolün ve davranışın:\n{persona_instruction}"
 )
 
@@ -59,33 +60,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text_to_process = ""
     is_photo_related = False
 
-    # --- 1. RESİM VE MEDYA KONTROLÜ ---
-    # Doğrudan fotoğraf atıldıysa veya içinde fotoğraf barındıran bir mesaja (reply) yanıt yazıldıysa
+    # --- 1. RESİM VE MEDYA KONTROLÜ (Geliştirilmiş) ---
     if message.photo:
         is_photo_related = True
         caption = message.caption or message.text or ""
         text_to_process = f"[Kullanıcı bir fotoğraf gönderdi ve şunu istiyor]: {caption}"
-    elif message.reply_to_message and message.reply_to_message.photo:
-        is_photo_related = True
-        reply_text = message.text or message.caption or ""
-        text_to_process = f"[Kullanıcı bir fotoğrafa yanıt vererek şunu istiyor]: {reply_text}"
-    elif message.voice or message.video or message.video_note:
-        try:
-            media_file = message.voice or message.video or message.video_note
-            file = await context.bot.get_file(media_file.file_id)
-            file_path = "temp_media.mp4"
-            await file.download_to_drive(file_path)
-
-            with open(file_path, "rb") as audio_file:
-                transcription = groq_client.audio.transcriptions.create(
-                    file=(file_path, audio_file.read()),
-                    model="whisper-large-v3"
-                )
-            text_to_process = transcription.text
-            if os.path.exists(file_path):
-                os.remove(file_path)
-        except Exception as e:
-            logger.error(f"Media səs xətası: {e}")
+    elif message.reply_to_message:
+        # Eğer kullanıcı bir mesaja yanıt verdiyse ve o mesajda FOTOĞRAF varsa VEYA yanıt verilen mesajın kendisi bir fotoğraftıysa
+        if message.reply_to_message.photo or (message.reply_to_message.caption and "fotoğraf" in message.reply_to_message.caption.lower()):
+            is_photo_related = True
+            reply_text = message.text or message.caption or ""
+            text_to_process = f"[Kullanıcı bir fotoğrafa yanıt vererek şunu istiyor]: {reply_text}"
 
     if not text_to_process:
         text_to_process = message.text or message.caption
@@ -105,7 +90,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     is_reply_to_bot = message.reply_to_message and message.reply_to_message.from_user and message.reply_to_message.from_user.id == context.bot.id
 
-    # Eğer resimle ilgili bir işlemse, etiket zorunluluğu aramadan doğrudan yapay zekaya yönlendir
+    # Eğer resimle ilgili bir işlemse çeviriye asla düşmesin, doğrudan yapay zekaya gitsin
     if is_photo_related or is_mentioned or is_reply_to_bot:
         clean_text = text_to_process.replace(f"@{bot_username}", "").strip()
         
@@ -168,7 +153,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     application = Application.builder().token(TELEGRAM_TOKEN).build()
     application.add_handler(MessageHandler(filters.TEXT | filters.VOICE | filters.PHOTO | filters.VIDEO | filters.ANIMATION | filters.VIDEO_NOTE, handle_message))
-    logger.info("Urfalı Harun Fotoğraf Yanıtlama Desteğiyle İşləyir...")
+    logger.info("Urfalı Harun Karakter ve Fotoğraf Desteğiyle Tam Gaz İşləyir...")
     application.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
