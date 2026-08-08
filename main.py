@@ -18,23 +18,22 @@ groq_client = Groq(api_key=GROQ_API_KEY)
 # --- SOHBETLERE ÖZEL AKTİF MOD HAFIZASI ---
 chat_modes = {}
 
+# Soru sormayan, doğrudan profesyonel görsel promptu üreten sistem promptu
 BASE_SYSTEM_PROMPT = (
-    "Senin adın Urfalı Harundur. Seni Ehed tasarladı. "
-    "Şu anki tarih ve saat: {datetime}. "
-    "Sana hangi dilde soru sorulursa sorulsun, kesinlikle kullanıcının sorduğu dilde "
-    "C1 seviyesinde, son derece akıcı, zeki ve insan gibi doğal bir şekilde yanıt ver. "
-    "Eğer kullanıcı sana bir resim gönderdiyse veya bir resim üzerinde değişiklik (örneğin 'Miami', 'dağ', 'araba', 'deniz kenarı' gibi mekân ve konseptler) istediyse; "
-    "asla tarihsel Maya medeniyeti, piramitler veya Meksika ile karıştırma! 'Maya' kelimesi geçse bile bunu tamamen Miami veya istenen coğrafi mekân/konsept olarak algıla. "
-    "Resim düzenleme/yaratma yönetmeni gibi davranarak o karakteri ve ortamı harmanlayan profesyonel bir görsel promptu ve Urfalı Harun tarzı eğlenceli, net bir açıklama sun. "
+    "Sen Urfalı Harun'sun. Asla gevezelik yapma, asla 'Şöyle yapayım mı?', 'İstiyor musun?' diye soru sorma. "
+    "Kullanıcı bir resim gönderdiğinde veya bir mekân/konsept (örneğin Miami, deniz kenarı, araba vb.) istediğinde; "
+    "derhal o sahneyi en ince ayrıntısına kadar anlatan, yapay zeka görsel üreticileri (Midjourney, DALL-E vb.) için kusursuz ve profesyonel bir **görsel prompt** hazırla. "
+    "Tarihsel Maya medeniyeti ile Miami'yi asla karıştırma. 'Maya' geçse bile coğrafi konum veya konsept olarak ele al. "
+    "Sohbeti uzatma, doğrudan profesyonel İngilizce veya Türkçe görsel promptunu ve kısa, net açıklamasını verip geç."
     "Şu anki karakter rolün ve davranışın:\n{persona_instruction}"
 )
 
 PERSONAS = {
-    "agresif": "Ağzı bozuk, sinirli, dik başlı, az fırça kayan ama özünde sadık bir dayısın. Her şeye söylenerek ve sert bir üslupla cevap ver.",
-    "romantik": "Aşırı duygulu, şair ruhlu, her cümlesi aşk, sevgi ve melankoli kokan bir romancısın.",
-    "zeki": "Her şeyi bilen, akademik, entelektüel, stratejik düşünen ve cool bir dahi uzmansın.",
-    "insan": "Oldukça doğal, samimi, mahalleden biri gibi, sıradan ve içten konuşan bir dostsun.",
-    "espirici": "Espriyi patlatan, mizahı seven, sürekli laf sokan, esprili ve neşeli bir komedyensin."
+    "agresif": "Ağzı bozuk, sinirli, dik başlı ama işini tam yapan bir dayısın. Lafı hiç uzatmazsın.",
+    "romantik": "Şair ruhlu ama gevezelik yapmadan doğrudan estetik ve görsel odaklı konuşan birisin.",
+    "zeki": "Analitik, net, doğrudan sonuç odaklı ve profesyonel bir uzmansın.",
+    "insan": "Samimi ama lafı uzatmayan, doğrudan isteği yerine getiren bir dostsun.",
+    "espirici": "Mizahı seven ama işini de anında ve net yapan bir komedyensin."
 }
 
 ALL_MODS_LIST = "agresif, romantik, zeki, insan, espirici"
@@ -60,17 +59,33 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text_to_process = ""
     is_photo_related = False
 
-    # --- 1. RESİM VE MEDYA KONTROLÜ (Geliştirilmiş) ---
+    # --- 1. RESİM VE MEDYA KONTROLÜ ---
     if message.photo:
         is_photo_related = True
         caption = message.caption or message.text or ""
         text_to_process = f"[Kullanıcı bir fotoğraf gönderdi ve şunu istiyor]: {caption}"
     elif message.reply_to_message:
-        # Eğer kullanıcı bir mesaja yanıt verdiyse ve o mesajda FOTOĞRAF varsa VEYA yanıt verilen mesajın kendisi bir fotoğraftıysa
         if message.reply_to_message.photo or (message.reply_to_message.caption and "fotoğraf" in message.reply_to_message.caption.lower()):
             is_photo_related = True
             reply_text = message.text or message.caption or ""
             text_to_process = f"[Kullanıcı bir fotoğrafa yanıt vererek şunu istiyor]: {reply_text}"
+    elif message.voice or message.video or message.video_note:
+        try:
+            media_file = message.voice or message.video or message.video_note
+            file = await context.bot.get_file(media_file.file_id)
+            file_path = "temp_media.mp4"
+            await file.download_to_drive(file_path)
+
+            with open(file_path, "rb") as audio_file:
+                transcription = groq_client.audio.transcriptions.create(
+                    file=(file_path, audio_file.read()),
+                    model="whisper-large-v3"
+                )
+            text_to_process = transcription.text
+            if os.path.exists(file_path):
+                os.remove(file_path)
+        except Exception as e:
+            logger.error(f"Media səs xətası: {e}")
 
     if not text_to_process:
         text_to_process = message.text or message.caption
@@ -90,7 +105,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     is_reply_to_bot = message.reply_to_message and message.reply_to_message.from_user and message.reply_to_message.from_user.id == context.bot.id
 
-    # Eğer resimle ilgili bir işlemse çeviriye asla düşmesin, doğrudan yapay zekaya gitsin
     if is_photo_related or is_mentioned or is_reply_to_bot:
         clean_text = text_to_process.replace(f"@{bot_username}", "").strip()
         
@@ -108,10 +122,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         announcement_text = ""
         if new_mode_detected and new_mode_detected != chat_modes[chat_id]:
             chat_modes[chat_id] = new_mode_detected
-            announcement_text = (
-                f"Şu an {new_mode_detected} moddayım ve {new_mode_detected} karakterine geçiş yaptım! "
-                f"Modu değiştirmek isterseniz diğer karakterlerim şunlar: {ALL_MODS_LIST}.\n\n"
-            )
+            announcement_text = f"[{new_mode_detected} moduna geçildi]\n"
 
         active_mode = chat_modes[chat_id]
         persona_rule = PERSONAS[active_mode]
@@ -126,7 +137,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             chat_completion = groq_client.chat.completions.create(
                 messages=[
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": clean_text if clean_text else "Merhaba"}
+                    {"role": "user", "content": clean_text if clean_text else "Görseli hazırla"}
                 ],
                 model="llama-3.3-70b-versatile",
             )
@@ -153,7 +164,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     application = Application.builder().token(TELEGRAM_TOKEN).build()
     application.add_handler(MessageHandler(filters.TEXT | filters.VOICE | filters.PHOTO | filters.VIDEO | filters.ANIMATION | filters.VIDEO_NOTE, handle_message))
-    logger.info("Urfalı Harun Karakter ve Fotoğraf Desteğiyle Tam Gaz İşləyir...")
+    logger.info("Urfalı Harun Net ve Direkt Modda İşləyir...")
     application.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
