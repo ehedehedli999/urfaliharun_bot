@@ -1,8 +1,6 @@
 import os
 import logging
-import base64
 from datetime import datetime
-from PIL import Image
 from telegram import Update
 from telegram.ext import Application, MessageHandler, filters, ContextTypes
 from groq import Groq
@@ -17,34 +15,30 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 groq_client = Groq(api_key=GROQ_API_KEY)
 
-# --- SOHBETLERE ÖZEL AKTİF MOD HAFIZASI (Başlangıç modu: zeki) ---
+# --- SOHBETLERE ÖZEL AKTİF MOD HAFIZASI ---
 chat_modes = {}
 
 BASE_SYSTEM_PROMPT = (
     "Senin adın Urfalı Harundur. Seni Ehed tasarladı. "
     "Şu anki tarih ve saat: {datetime}. "
-    "Sana hangi dilde (Türkçe, Rusça, Almanca vb.) soru sorulursa sorulsun, kesinlikle kullanıcının sorduğu dilde "
+    "Sana hangi dilde soru sorulursa sorulsun, kesinlikle kullanıcının sorduğu dilde "
     "C1 seviyesinde, son derece akıcı, zeki ve insan gibi doğal bir şekilde yanıt ver. "
-    "Sen 'Game of Sultans' mobil oyununun en üst düzey stratejisti ve hesaplama uzmanısın. "
-    "Kullanıcı hangi dilde yazarsa yazsın; metnin içinde veya görselde geçen 'samimiyet' (близость, Intimität), "
-    "'devlet gücü' (мощь, Staatsmacht), 'cazibe' (обаяние, Charme), 'paye' veya 'DC' gibi anahtar kelimeleri tek başına geçse bile "
-    "hemen algıla. Ekran görüntüsü atıldığında o kelimeye odaklanarak envanterdeki sayıları çarpıp topla ve kusursuz matematiksel hesaplama yap. "
     "Şu anki karakter rolün ve davranışın:\n{persona_instruction}"
 )
 
 PERSONAS = {
     "agresif": "Ağzı bozuk, sinirli, dik başlı, az fırça kayan ama özünde sadık bir dayısın. Her şeye söylenerek ve sert bir üslupla cevap ver.",
     "romantik": "Aşırı duygulu, şair ruhlu, her cümlesi aşk, sevgi ve melankoli kokan bir romancısın.",
-    "zeki": "Her şeyi bilen, akademik, entelektüel, stratejik düşünen ve cool bir dahi uzmansın. Olayları kusursuz analiz eder ve hesaplarsın.",
-    "insan": "Oldukça doğal, mahalleden biri gibi, samimi və içten konuşan bir dostsun.",
-    "espirici": "Espriyi patlatan, mizahı seven, sürekli laf sokan, esprili və neşeli bir komedyensin."
+    "zeki": "Her şeyi bilen, akademik, entelektüel, stratejik düşünen ve cool bir dahi uzmansın.",
+    "insan": "Oldukça doğal, samimi, mahalleden biri gibi, sıradan ve içten konuşan bir dostsun.",
+    "espirici": "Espriyi patlatan, mizahı seven, sürekli laf sokan, esprili ve neşeli bir komedyensin."
 }
 
 ALL_MODS_LIST = "agresif, romantik, zeki, insan, espirici"
 
 TRANSLATE_PROMPT = (
     "Sen C1 seviyesinde profesyonel bir çevirmensin. Sana gelen metni anlamını ve tonunu bozmadan, "
-    "en akıcı və doğal şekilde tam olarak şu 3 dile çevir və başka hiçbir açıklama yapmadan "
+    "en akıcı ve doğal şekilde tam olarak şu 3 dile çevir ve başka hiçbir açıklama yapmadan "
     "yalnızca şu formatta ver:\n"
     "Türkçe: [çeviri]\n"
     "Rusça: [çeviri]\n"
@@ -61,9 +55,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     text_to_process = ""
-    image_file_paths = []
 
-    # --- 1. SESLİ MESAJ VEYA VİDEO ANALİZİ ---
+    # --- 1. SƏSLİ MESAJ VƏ YA VİDEONUN İÇİNDƏKİ SƏS ---
     if message.voice or message.video or message.video_note:
         try:
             media_file = message.voice or message.video or message.video_note
@@ -82,29 +75,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logger.error(f"Media səs xətası: {e}")
 
-    # --- 2. FOTOĞRAF (EKRAN GÖRÜNTÜSÜ) ANALİZİ ---
-    elif message.photo:
-        try:
-            photo_file = await context.bot.get_file(message.photo[-1].file_id)
-            raw_path = f"temp_raw_{message.message_id}.jpg"
-            optimized_path = f"temp_game_screen_{message.message_id}.jpg"
-            
-            await photo_file.download_to_drive(raw_path)
-            
-            # Görseli optimize et (API çökmesini önlemek için boyut küçültme)
-            with Image.open(raw_path) as img:
-                img.thumbnail((1024, 1024))
-                img.save(optimized_path, "JPEG", quality=85)
-            
-            if os.path.exists(raw_path):
-                os.remove(raw_path)
-                
-            image_file_paths.append(optimized_path)
-        except Exception as e:
-            logger.error(f"Fotoğraf işleme hatası: {e}")
+    if not text_to_process:
+        text_to_process = message.text or message.caption
 
     if not text_to_process:
-        text_to_process = message.text or message.caption or ""
+        return
 
     is_mentioned = False
     if f"@{bot_username}" in text_to_process:
@@ -118,21 +93,25 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     is_reply_to_bot = message.reply_to_message and message.reply_to_message.from_user and message.reply_to_message.from_user.id == context.bot.id
 
-    if is_mentioned or is_reply_to_bot or image_file_paths:
+    if is_mentioned or is_reply_to_bot:
         clean_text = text_to_process.replace(f"@{bot_username}", "").strip()
         
+        # Bu sohbet için daha önce belirlenmiş bir mod yoksa varsayılan 'insan' olsun
         if chat_id not in chat_modes:
-            chat_modes[chat_id] = "zeki"
+            chat_modes[chat_id] = "insan"
 
+        # Mesaj içinde yeni bir mod komutu var mı kontrol et (örn: 'agresif', 'zeki' vb.)
         new_mode_detected = None
         clean_lower = clean_text.lower()
         for mode_key in PERSONAS.keys():
             if mode_key in clean_lower:
                 new_mode_detected = mode_key
+                # Mod kelimesini metinden temizle ki yapay zeka komut olarak algılamasın
                 clean_text = clean_text.replace(mode_key, "").strip()
                 break
 
         announcement_text = ""
+        # Eğer yeni bir mod yazıldıysa hafızayı güncelle ve duyuruyu hazırla
         if new_mode_detected and new_mode_detected != chat_modes[chat_id]:
             chat_modes[chat_id] = new_mode_detected
             announcement_text = (
@@ -150,41 +129,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         try:
-            if image_file_paths:
-                user_content = [
-                    {
-                        "type": "text", 
-                        "text": clean_text if clean_text else "Bu oyun ekran görüntüsünü analiz et ve metindeki ya da görseldeki anahtar kelimeye (samimiyet, devlet gücü, cazibe, paye, DC) göre envanter hesaplamasını yap."
-                    }
-                ]
-                
-                for img_path in image_file_paths:
-                    with open(img_path, "rb") as img_f:
-                        base64_image = base64.b64encode(img_f.read()).decode("utf-8")
-                    user_content.append({
-                        "type": "image_url",
-                        "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
-                    })
-
-                chat_completion = groq_client.chat.completions.create(
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_content}
-                    ],
-                    model="llama-3.2-11b-vision-preview",
-                )
-                
-                for img_path in image_file_paths:
-                    if os.path.exists(img_path):
-                        os.remove(img_path)
-            else:
-                chat_completion = groq_client.chat.completions.create(
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": clean_text if clean_text else "Merhaba"}
-                    ],
-                    model="llama-3.3-70b-versatile",
-                )
+            chat_completion = groq_client.chat.completions.create(
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": clean_text if clean_text else "Merhaba"}
+                ],
+                model="llama-3.3-70b-versatile",
+            )
             
             bot_reply = chat_completion.choices[0].message.content
             final_response = announcement_text + bot_reply
@@ -192,9 +143,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await message.reply_text(final_response)
         except Exception as e:
             logger.error(f"AI xətası: {e}")
-            for img_path in image_file_paths:
-                if os.path.exists(img_path):
-                    os.remove(img_path)
     else:
         try:
             chat_completion = groq_client.chat.completions.create(
@@ -211,7 +159,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     application = Application.builder().token(TELEGRAM_TOKEN).build()
     application.add_handler(MessageHandler(filters.TEXT | filters.VOICE | filters.PHOTO | filters.VIDEO | filters.ANIMATION | filters.VIDEO_NOTE, handle_message))
-    logger.info("Urfalı Harun Optimize Görsel İşleme Moduyla işləyir...")
+    logger.info("Urfalı Harun C1 Karakter Sistemli işləyir...")
     application.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
