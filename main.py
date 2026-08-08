@@ -2,6 +2,7 @@ import os
 import logging
 import base64
 from datetime import datetime
+from PIL import Image
 from telegram import Update
 from telegram.ext import Application, MessageHandler, filters, ContextTypes
 from groq import Groq
@@ -16,7 +17,7 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 groq_client = Groq(api_key=GROQ_API_KEY)
 
-# --- SOHBETLERE ÖZEL AKTİF MOD HAFIZASI ---
+# --- SOHBETLERE ÖZEL AKTİF MOD HAFIZASI (Başlangıç modu: zeki) ---
 chat_modes = {}
 
 BASE_SYSTEM_PROMPT = (
@@ -24,19 +25,18 @@ BASE_SYSTEM_PROMPT = (
     "Şu anki tarih ve saat: {datetime}. "
     "Sana hangi dilde (Türkçe, Rusça, Almanca vb.) soru sorulursa sorulsun, kesinlikle kullanıcının sorduğu dilde "
     "C1 seviyesinde, son derece akıcı, zeki ve insan gibi doğal bir şekilde yanıt ver. "
-    "Sen 'Game of Sultans' mobil oyununun ve hesaplama araçlarının uzman stratejistisin. "
-    "Kullanıcı hangi dilde yazarsa yazsın (Türkçe, Rusça, Almanca vb.); metindeki 'samimiyet' (близость, Intimität), "
-    "'devlet gücü' (мощь, Staatsmacht), 'cazibe' (обаяние, Charme), 'paye' veya 'DC' gibi anahtar kavramları otomatik olarak algıla. "
-    "Kullanıcı oyun içi ekran görüntüsü attığında, hangi dilde yazılmış olursa olsun fotoğraflardaki sayıları ve öğeleri tarayıp "
-    "bu anahtar kelimelere göre toplam hesaplamaları yap ve net sonuçları ver. "
+    "Sen 'Game of Sultans' mobil oyununun en üst düzey stratejisti ve hesaplama uzmanısın. "
+    "Kullanıcı hangi dilde yazarsa yazsın; metnin içinde veya görselde geçen 'samimiyet' (близость, Intimität), "
+    "'devlet gücü' (мощь, Staatsmacht), 'cazibe' (обаяние, Charme), 'paye' veya 'DC' gibi anahtar kelimeleri tek başına geçse bile "
+    "hemen algıla. Ekran görüntüsü atıldığında o kelimeye odaklanarak envanterdeki sayıları çarpıp topla ve kusursuz matematiksel hesaplama yap. "
     "Şu anki karakter rolün ve davranışın:\n{persona_instruction}"
 )
 
 PERSONAS = {
     "agresif": "Ağzı bozuk, sinirli, dik başlı, az fırça kayan ama özünde sadık bir dayısın. Her şeye söylenerek ve sert bir üslupla cevap ver.",
     "romantik": "Aşırı duygulu, şair ruhlu, her cümlesi aşk, sevgi ve melankoli kokan bir romancısın.",
-    "zeki": "Her şeyi bilen, akademik, entelektüel, stratejik düşünen ve cool bir dahi uzmansın.",
-    "insan": "Oldukça doğal, samimi, mahalleden biri gibi, sıradan və içten konuşan bir dostsun.",
+    "zeki": "Her şeyi bilen, akademik, entelektüel, stratejik düşünen ve cool bir dahi uzmansın. Olayları kusursuz analiz eder ve hesaplarsın.",
+    "insan": "Oldukça doğal, mahalleden biri gibi, samimi və içten konuşan bir dostsun.",
     "espirici": "Espriyi patlatan, mizahı seven, sürekli laf sokan, esprili və neşeli bir komedyensin."
 }
 
@@ -82,15 +82,26 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logger.error(f"Media səs xətası: {e}")
 
-    # --- 2. TEKLİ VEYA ÇOKLU FOTOĞRAF (EKRAN GÖRÜNTÜSÜ) ANALİZİ ---
+    # --- 2. FOTOĞRAF (EKRAN GÖRÜNTÜSÜ) ANALİZİ ---
     elif message.photo:
         try:
             photo_file = await context.bot.get_file(message.photo[-1].file_id)
-            file_path = f"temp_game_screen_{message.message_id}.jpg"
-            await photo_file.download_to_drive(file_path)
-            image_file_paths.append(file_path)
+            raw_path = f"temp_raw_{message.message_id}.jpg"
+            optimized_path = f"temp_game_screen_{message.message_id}.jpg"
+            
+            await photo_file.download_to_drive(raw_path)
+            
+            # Görseli optimize et (API çökmesini önlemek için boyut küçültme)
+            with Image.open(raw_path) as img:
+                img.thumbnail((1024, 1024))
+                img.save(optimized_path, "JPEG", quality=85)
+            
+            if os.path.exists(raw_path):
+                os.remove(raw_path)
+                
+            image_file_paths.append(optimized_path)
         except Exception as e:
-            logger.error(f"Fotoğraf indirme hatası: {e}")
+            logger.error(f"Fotoğraf işleme hatası: {e}")
 
     if not text_to_process:
         text_to_process = message.text or message.caption or ""
@@ -111,7 +122,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         clean_text = text_to_process.replace(f"@{bot_username}", "").strip()
         
         if chat_id not in chat_modes:
-            chat_modes[chat_id] = "insan"
+            chat_modes[chat_id] = "zeki"
 
         new_mode_detected = None
         clean_lower = clean_text.lower()
@@ -143,7 +154,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 user_content = [
                     {
                         "type": "text", 
-                        "text": clean_text if clean_text else "Bu ekran görüntüsünü Game of Sultans oyununa göre analiz et. Metindeki veya görseldeki isteğe göre samimiyet, devlet gücü, cazibe, paye veya DC değerlerini hesapla."
+                        "text": clean_text if clean_text else "Bu oyun ekran görüntüsünü analiz et ve metindeki ya da görseldeki anahtar kelimeye (samimiyet, devlet gücü, cazibe, paye, DC) göre envanter hesaplamasını yap."
                     }
                 ]
                 
@@ -200,7 +211,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     application = Application.builder().token(TELEGRAM_TOKEN).build()
     application.add_handler(MessageHandler(filters.TEXT | filters.VOICE | filters.PHOTO | filters.VIDEO | filters.ANIMATION | filters.VIDEO_NOTE, handle_message))
-    logger.info("Urfalı Harun Çok Dilli Akıllı Oyun Moduyla işləyir...")
+    logger.info("Urfalı Harun Optimize Görsel İşleme Moduyla işləyir...")
     application.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
