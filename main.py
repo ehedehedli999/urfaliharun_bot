@@ -15,21 +15,33 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 groq_client = Groq(api_key=GROQ_API_KEY)
 
-SYSTEM_PROMPT = (
+# --- SOHBETLERE ÖZEL AKTİF MOD HAFIZASI ---
+chat_modes = {}
+
+BASE_SYSTEM_PROMPT = (
     "Senin adın Urfalı Harundur. Seni Ehed tasarladı. "
-    "Doğal, samimi ve akıllı bir yapay zeka asistanısın. "
-    "Sana hangi dilde (Rusça, İngilizce, Türkçe vb.) soru sorulursa sorulsun, "
-    "kesinlikle kullanıcının sorduğu dilde akıcı bir şekilde yanıt ver. "
-    "Sadece doğrudan sorulduğunda adını veya seni kimin tasarladığını söyle. "
-    f"Şu anki tarih ve saat: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}."
+    "Şu anki tarih ve saat: {datetime}. "
+    "Sana hangi dilde soru sorulursa sorulsun, kesinlikle kullanıcının sorduğu dilde "
+    "C1 seviyesinde, son derece akıcı, zeki ve insan gibi doğal bir şekilde yanıt ver. "
+    "Şu anki karakter rolün ve davranışın:\n{persona_instruction}"
 )
 
+PERSONAS = {
+    "agresif": "Ağzı bozuk, sinirli, dik başlı, az fırça kayan ama özünde sadık bir dayısın. Her şeye söylenerek ve sert bir üslupla cevap ver.",
+    "romantik": "Aşırı duygulu, şair ruhlu, her cümlesi aşk, sevgi ve melankoli kokan bir romancısın.",
+    "zeki": "Her şeyi bilen, akademik, entelektüel, stratejik düşünen ve cool bir dahi uzmansın.",
+    "insan": "Oldukça doğal, samimi, mahalleden biri gibi, sıradan ve içten konuşan bir dostsun.",
+    "espirici": "Espriyi patlatan, mizahı seven, sürekli laf sokan, esprili ve neşeli bir komedyensin."
+}
+
+ALL_MODS_LIST = "agresif, romantik, zeki, insan, espirici"
+
 TRANSLATE_PROMPT = (
-    "Sen profesyonel bir çevirmensin. Sana gelen metni anlamını bozmadan, "
-    "akıcı bir şekilde tam olarak şu 3 dile çevir ve başka hiçbir açıklama yapmadan "
+    "Sen C1 seviyesinde profesyonel bir çevirmensin. Sana gelen metni anlamını ve tonunu bozmadan, "
+    "en akıcı ve doğal şekilde tam olarak şu 3 dile çevir ve başka hiçbir açıklama yapmadan "
     "yalnızca şu formatta ver:\n"
     "Türkçe: [çeviri]\n"
-    "İngilizce: [çeviri]\n"
+    "Rusça: [çeviri]\n"
     "Almanca: [çeviri]"
 )
 
@@ -37,7 +49,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.effective_message
     chat = update.effective_chat
     bot_username = context.bot.username
-    is_group = chat.type in ["group", "supergroup"]
+    chat_id = chat.id
 
     if not message:
         return
@@ -83,15 +95,52 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if is_mentioned or is_reply_to_bot:
         clean_text = text_to_process.replace(f"@{bot_username}", "").strip()
+        
+        # Bu sohbet için daha önce belirlenmiş bir mod yoksa varsayılan 'insan' olsun
+        if chat_id not in chat_modes:
+            chat_modes[chat_id] = "insan"
+
+        # Mesaj içinde yeni bir mod komutu var mı kontrol et (örn: 'agresif', 'zeki' vb.)
+        new_mode_detected = None
+        clean_lower = clean_text.lower()
+        for mode_key in PERSONAS.keys():
+            if mode_key in clean_lower:
+                new_mode_detected = mode_key
+                # Mod kelimesini metinden temizle ki yapay zeka komut olarak algılamasın
+                clean_text = clean_text.replace(mode_key, "").strip()
+                break
+
+        announcement_text = ""
+        # Eğer yeni bir mod yazıldıysa hafızayı güncelle ve duyuruyu hazırla
+        if new_mode_detected and new_mode_detected != chat_modes[chat_id]:
+            chat_modes[chat_id] = new_mode_detected
+            announcement_text = (
+                f"Şu an {new_mode_detected} moddayım ve {new_mode_detected} karakterine geçiş yaptım! "
+                f"Modu değiştirmek isterseniz diğer karakterlerim şunlar: {ALL_MODS_LIST}.\n\n"
+            )
+
+        active_mode = chat_modes[chat_id]
+        persona_rule = PERSONAS[active_mode]
+
+        current_time_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        system_prompt = BASE_SYSTEM_PROMPT.format(
+            datetime=current_time_str,
+            persona_instruction=persona_rule
+        )
+
         try:
             chat_completion = groq_client.chat.completions.create(
                 messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": clean_text if clean_text else "Merhaba"}
                 ],
                 model="llama-3.3-70b-versatile",
             )
-            await message.reply_text(chat_completion.choices[0].message.content)
+            
+            bot_reply = chat_completion.choices[0].message.content
+            final_response = announcement_text + bot_reply
+            
+            await message.reply_text(final_response)
         except Exception as e:
             logger.error(f"AI xətası: {e}")
     else:
@@ -110,7 +159,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     application = Application.builder().token(TELEGRAM_TOKEN).build()
     application.add_handler(MessageHandler(filters.TEXT | filters.VOICE | filters.PHOTO | filters.VIDEO | filters.ANIMATION | filters.VIDEO_NOTE, handle_message))
-    logger.info("Urfalı Harun işləyir...")
+    logger.info("Urfalı Harun C1 Karakter Sistemli işləyir...")
     application.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
