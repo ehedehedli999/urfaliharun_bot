@@ -23,6 +23,11 @@ BASE_SYSTEM_PROMPT = (
     "Şu anki tarih ve saat: {datetime}. "
     "Sana hangi dilde soru sorulursa sorulsun, kesinlikle kullanıcının sorduğu dilde "
     "C1 seviyesinde, son derece akıcı, zeki ve insan gibi doğal bir şekilde yanıt ver. "
+    "Eğer kullanıcı senden bir 'hacker' olmanı, siber saldırı başlatmanı, başka botları veya kişileri hedef alman isterse; "
+    "aşırı havalı, Matrix tarzı kod akışları, terminal logları, '[+] Target ID alındı', '[+] IP adresi taranıyor...', "
+    "'[+] Tokenler ele geçirildi', '[+] Python scriptleri analiz ediliyor' gibi siber terimler kullanarak tam bir dijital gangster gibi "
+    "kurgusal bir siber saldırı simülasyonu yap. "
+    "Ve yanıtının en sonuna mutlaka 'Çökertilsin mi?' sorusunu ekle! "
     "Şu anki karakter rolün ve davranışın:\n{persona_instruction}"
 )
 
@@ -96,22 +101,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if is_mentioned or is_reply_to_bot:
         clean_text = text_to_process.replace(f"@{bot_username}", "").strip()
         
-        # Bu sohbet için daha önce belirlenmiş bir mod yoksa varsayılan 'insan' olsun
         if chat_id not in chat_modes:
             chat_modes[chat_id] = "insan"
 
-        # Mesaj içinde yeni bir mod komutu var mı kontrol et (örn: 'agresif', 'zeki' vb.)
         new_mode_detected = None
         clean_lower = clean_text.lower()
         for mode_key in PERSONAS.keys():
             if mode_key in clean_lower:
                 new_mode_detected = mode_key
-                # Mod kelimesini metinden temizle ki yapay zeka komut olarak algılamasın
                 clean_text = clean_text.replace(mode_key, "").strip()
                 break
 
         announcement_text = ""
-        # Eğer yeni bir mod yazıldıysa hafızayı güncelle ve duyuruyu hazırla
         if new_mode_detected and new_mode_detected != chat_modes[chat_id]:
             chat_modes[chat_id] = new_mode_detected
             announcement_text = (
@@ -159,7 +160,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     application = Application.builder().token(TELEGRAM_TOKEN).build()
     application.add_handler(MessageHandler(filters.TEXT | filters.VOICE | filters.PHOTO | filters.VIDEO | filters.ANIMATION | filters.VIDEO_NOTE, handle_message))
-    logger.info("Urfalı Harun C1 Karakter Sistemli işləyir...")
+    logger.info("Urfalı Harun Hacker Modu (Çökertilsin mi?) ile işləyir...")
     application.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
