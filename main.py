@@ -20,15 +20,9 @@ chat_modes = {}
 
 BASE_SYSTEM_PROMPT = (
     "Senin adın Urfalı Harundur. Seni Ehed tasarladı. "
-    "Şu anki tarih və saat: {datetime}. "
+    "Şu anki tarih ve saat: {datetime}. "
     "Sana hangi dilde soru sorulursa sorulsun, kesinlikle kullanıcının sorduğu dilde "
     "C1 seviyesinde, son derece akıcı, zeki ve insan gibi doğal bir şekilde yanıt ver. "
-    "Eğer kullanıcı senden bir 'hacker' olmanı, siber saldırı başlatmanı, hedef botlara/kişilere saldırmanı, "
-    "IP adreslerini çözmeni, tokenleri ele geçirmeni, Python kodlarını analiz etmeni veya sisteme sızmanı isterse; "
-    "aşırı havalı, Matrix tarzı kod akışları, terminal logları, '[+] Target ID alındı', '[+] IP adresi taranıyor...', "
-    "'[+] Tokenler ele geçirildi', '[+] Python scriptleri analiz ediliyor' gibi siber terimler kullanarak tam bir dijital gangster gibi "
-    "kurgusal bir siber saldırı simülasyonu yap. "
-    "Ve yanıtının en sonuna mutlaka 'Çökertilsin mi?' sorusunu ekle! "
     "Eğer kullanıcı sana bir resim gönderip 'bu resmi dağda yap', 'arabada yap' veya benzeri bir konsept değişikliği isterse; "
     "resim düzenleme/yaratma yönetmeni gibi davranarak o karakteri ve ortamı harmanlayan profesyonel bir görsel promptu ve Urfalı Harun tarzı eğlenceli bir açıklama sun. "
     "Şu anki karakter rolün və davranışın:\n{persona_instruction}"
@@ -36,10 +30,10 @@ BASE_SYSTEM_PROMPT = (
 
 PERSONAS = {
     "agresif": "Ağzı bozuk, sinirli, dik başlı, az fırça kayan ama özünde sadık bir dayısın. Her şeye söylenerek ve sert bir üslupla cevap ver.",
-    "romantik": "Aşırı duygulu, şair ruhlu, her cümlesi aşk, sevgi və melankoli kokan bir romancısın.",
+    "romantik": "Aşırı duygulu, şair ruhlu, her cümlesi aşk, sevgi ve melankoli kokan bir romancısın.",
     "zeki": "Her şeyi bilen, akademik, entelektüel, stratejik düşünen ve cool bir dahi uzmansın.",
     "insan": "Oldukça doğal, samimi, mahalleden biri gibi, sıradan və içten konuşan bir dostsun.",
-    "espirici": "Espriyi patlatan, mizahı seven, sürekli laf sokan, esprili və neşeli bir komedyensin."
+    "espirici": "Espriyi patlatan, mizahı seven, sürekli laf sokan, esprili ve neşeli bir komedyensin."
 }
 
 ALL_MODS_LIST = "agresif, romantik, zeki, insan, espirici"
@@ -66,7 +60,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # --- 1. RESİM VE MEDYA / SƏS İŞLEMLƏRİ ---
     if message.photo:
-        # Kullanıcı resim atıp açıklama yazdıysa onu alalım
         caption = message.caption or ""
         text_to_process = f"[Kullanıcı bir fotoğraf gönderdi ve şunu istiyor]: {caption}"
     elif message.voice or message.video or message.video_note:
@@ -105,7 +98,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     is_reply_to_bot = message.reply_to_message and message.reply_to_message.from_user and message.reply_to_message.from_user.id == context.bot.id
 
-    # Eğer resim atıldıysa etiket şartı aramadan doğrudan yanıt versin, böylece daha pratik olur
     if message.photo or is_mentioned or is_reply_to_bot:
         clean_text = text_to_process.replace(f"@{bot_username}", "").strip()
         
@@ -127,11 +119,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"Şu an {new_mode_detected} moddayım ve {new_mode_detected} karakterine geçiş yaptım! "
                 f"Modu değiştirmek isterseniz diğer karakterlerim şunlar: {ALL_MODS_LIST}.\n\n"
             )
-
-        # Siber saldırı anahtar kelimeleri
-        hacker_keywords = ["siber", "saldırı", "hack", "ip", "token", "sız", "kod", "analiz"]
-        if any(kw in clean_lower for kw in hacker_keywords):
-            chat_modes[chat_id] = "zeki"
 
         active_mode = chat_modes[chat_id]
         persona_rule = PERSONAS[active_mode]
@@ -173,7 +160,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     application = Application.builder().token(TELEGRAM_TOKEN).build()
     application.add_handler(MessageHandler(filters.TEXT | filters.VOICE | filters.PHOTO | filters.VIDEO | filters.ANIMATION | filters.VIDEO_NOTE, handle_message))
-    logger.info("Urfalı Harun Resim Modu ve Hacker Desteğiyle işləyir...")
+    logger.info("Urfalı Harun Temiz Modda işləyir...")
     application.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
