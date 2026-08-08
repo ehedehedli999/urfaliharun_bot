@@ -19,20 +19,20 @@ groq_client = Groq(api_key=GROQ_API_KEY)
 chat_modes = {}
 
 BASE_SYSTEM_PROMPT = (
-    "Senin adın Urfalı Harundur. Seni Ehed tasarladı. "
+    "Senin adın Urfalı Harundur. Seni Ehed tasarladı.[span_0](start_span)[span_0](end_span)"
     "Şu anki tarih ve saat: {datetime}. "
     "Sana hangi dilde soru sorulursa sorulsun, kesinlikle kullanıcının sorduğu dilde "
     "C1 seviyesinde, son derece akıcı, zeki ve insan gibi doğal bir şekilde yanıt ver. "
-    "Eğer kullanıcı sana bir resim gönderip 'bu resmi dağda yap', 'arabada yap' veya benzeri bir konsept değişikliği isterse; "
+    "Eğer kullanıcı sana bir resim gönderdiyse veya bir resim üzerinde değişiklik (örneğin 'bu resmi dağda yap', 'arabada yap', 'deniz kenarında yap') istediyse; "
     "resim düzenleme/yaratma yönetmeni gibi davranarak o karakteri ve ortamı harmanlayan profesyonel bir görsel promptu ve Urfalı Harun tarzı eğlenceli bir açıklama sun. "
-    "Şu anki karakter rolün və davranışın:\n{persona_instruction}"
+    "Şu anki karakter rolün ve davranışın:\n{persona_instruction}"
 )
 
 PERSONAS = {
     "agresif": "Ağzı bozuk, sinirli, dik başlı, az fırça kayan ama özünde sadık bir dayısın. Her şeye söylenerek ve sert bir üslupla cevap ver.",
     "romantik": "Aşırı duygulu, şair ruhlu, her cümlesi aşk, sevgi ve melankoli kokan bir romancısın.",
     "zeki": "Her şeyi bilen, akademik, entelektüel, stratejik düşünen ve cool bir dahi uzmansın.",
-    "insan": "Oldukça doğal, samimi, mahalleden biri gibi, sıradan və içten konuşan bir dostsun.",
+    "insan": "Oldukça doğal, samimi, mahalleden biri gibi, sıradan ve içten konuşan bir dostsun.",
     "espirici": "Espriyi patlatan, mizahı seven, sürekli laf sokan, esprili ve neşeli bir komedyensin."
 }
 
@@ -40,7 +40,7 @@ ALL_MODS_LIST = "agresif, romantik, zeki, insan, espirici"
 
 TRANSLATE_PROMPT = (
     "Sen C1 seviyesinde profesyonel bir çevirmensin. Sana gelen metni anlamını ve tonunu bozmadan, "
-    "en akıcı və doğal şekilde tam olarak şu 3 dile çevir ve başka hiçbir açıklama yapmadan "
+    "en akıcı ve doğal şekilde tam olarak şu 3 dile çevir ve başka hiçbir açıklama yapmadan "
     "yalnızca şu formatta ver:\n"
     "Türkçe: [çeviri]\n"
     "Rusça: [çeviri]\n"
@@ -57,11 +57,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     text_to_process = ""
+    is_photo_related = False
 
-    # --- 1. RESİM VE MEDYA / SƏS İŞLEMLƏRİ ---
+    # --- 1. RESİM VE MEDYA KONTROLÜ ---
+    # Doğrudan fotoğraf atıldıysa veya içinde fotoğraf barındıran bir mesaja (reply) yanıt yazıldıysa
     if message.photo:
-        caption = message.caption or ""
+        is_photo_related = True
+        caption = message.caption or message.text or ""
         text_to_process = f"[Kullanıcı bir fotoğraf gönderdi ve şunu istiyor]: {caption}"
+    elif message.reply_to_message and message.reply_to_message.photo:
+        is_photo_related = True
+        reply_text = message.text or message.caption or ""
+        text_to_process = f"[Kullanıcı bir fotoğrafa yanıt vererek şunu istiyor]: {reply_text}"
     elif message.voice or message.video or message.video_note:
         try:
             media_file = message.voice or message.video or message.video_note
@@ -98,7 +105,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     is_reply_to_bot = message.reply_to_message and message.reply_to_message.from_user and message.reply_to_message.from_user.id == context.bot.id
 
-    if message.photo or is_mentioned or is_reply_to_bot:
+    # Eğer resimle ilgili bir işlemse, etiket zorunluluğu aramadan doğrudan yapay zekaya yönlendir
+    if is_photo_related or is_mentioned or is_reply_to_bot:
         clean_text = text_to_process.replace(f"@{bot_username}", "").strip()
         
         if chat_id not in chat_modes:
@@ -160,7 +168,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     application = Application.builder().token(TELEGRAM_TOKEN).build()
     application.add_handler(MessageHandler(filters.TEXT | filters.VOICE | filters.PHOTO | filters.VIDEO | filters.ANIMATION | filters.VIDEO_NOTE, handle_message))
-    logger.info("Urfalı Harun Temiz Modda işləyir...")
+    logger.info("Urfalı Harun Fotoğraf Yanıtlama Desteğiyle İşləyir...")
     application.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
