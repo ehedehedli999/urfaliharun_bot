@@ -1,4 +1,5 @@
 import logging
+import os
 import httpx
 from telegram import Update
 from telegram.ext import (
@@ -8,13 +9,13 @@ from telegram.ext import (
     filters,
 )
 
-# Token'lar doğrudan koda eklendi
+# Koda doğrudan eklenen Token'ların
 TELEGRAM_TOKEN = "8363449973:AAFWPie-yjpJn1vHQxSKeykVKjq2Pt3Lo1k"
 XAI_API_KEY = "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"
 
-# API Endpoint & Model Ayarları
+# Groq API Endpoint & Güncel Model (Llama 3.3)
 XAI_URL = "https://api.groq.com/openai/v1/chat/completions"
-GROK_MODEL = "mixtral-8x7b-32768"
+GROK_MODEL = "llama-3.3-70b-versatile"
 
 CHAT_MODES = {}
 
@@ -24,6 +25,7 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
+
 
 SMART_PROMPT = """
 Sen Urfalı Harun Bot'un Zeki modusun.
