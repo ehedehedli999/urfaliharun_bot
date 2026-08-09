@@ -5,13 +5,11 @@ import requests
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
-# Loglama ayarları
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
 )
 logger = logging.getLogger(__name__)
 
-# Çevre Değişkenleri (Render'dan çekilir)
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
@@ -41,24 +39,37 @@ def query_openrouter(prompt: str, system_prompt: str) -> str:
         "Content-Type": "application/json"
     }
     
-    # Kesin olarak ücretsiz ve stabil çalışan Gemma modeli
-    data = {
-        "model": "google/gemma-2-9b-it:free", 
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": prompt}
-        ]
-    }
+    # OpenRouter üzerinden en kararlı çalışan ve anlık açık olan ana model havuzu
+    active_models = [
+        "cognitivecomputations/dolphin-mixtral-8x7b:free",
+        "meta-llama/llama-3-8b-instruct:free",
+        "mistralai/mistral-7b-instruct:free"
+    ]
     
-    response = requests.post(url, json=data, headers=headers, timeout=30)
-    if response.status_code == 200:
-        result = response.json()
-        return result["choices"][0]["message"]["content"]
-    else:
-        raise Exception(f"OpenRouter Hatası: {response.text}")
+    last_error = ""
+    for model_name in active_models:
+        data = {
+            "model": model_name,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt}
+            ]
+        }
+        try:
+            response = requests.post(url, json=data, headers=headers, timeout=25)
+            if response.status_code == 200:
+                result = response.json()
+                if "choices" in result and len(result["choices"]) > 0:
+                    return result["choices"][0]["message"]["content"]
+            else:
+                last_error = response.text
+        except Exception as e:
+            last_error = str(e)
+            continue
+            
+    raise Exception(f"Tüm yedek uç noktalar meşgul: {last_error}")
 
 async def draw_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """/ciz veya /resim komutu çalıştığında resim üretir."""
     message = update.effective_message
     if not message:
         return
@@ -71,7 +82,6 @@ async def draw_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await generate_and_send_image(message, prompt)
 
 async def generate_and_send_image(message, prompt: str):
-    """Pollinations AI altyapısını kullanarak ücretsiz görsel üretir."""
     status_msg = await message.reply_text("🎨 *Hermanaki görseli çiziyor, lütfen bekleyin...*", parse_mode="Markdown")
     try:
         encoded_prompt = urllib.parse.quote(prompt)
@@ -95,7 +105,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = message.text.strip()
     bot_username = context.bot.username
 
-    # 1. MESAJ İÇİNDE "RESİM ÇİZ" VEYA "GÖRSEL ÇİZ" GEÇİYORSA
     lower_text = text.lower()
     if lower_text.startswith("resim çiz") or lower_text.startswith("görsel çiz"):
         prompt = text.split("çiz", 1)[-1].strip()
@@ -125,7 +134,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     clean_text = text.replace(f"@{bot_username}", "").strip()
 
-    # 2. BOTA ETİKET VEYA YANIT ATILDIYSA: HERMANAKI YAPAY ZEKA MODU
     if is_mentioned or is_reply_to_bot:
         try:
             reply = query_openrouter(clean_text if clean_text else "Merhaba", HERMANAKI_SYSTEM_PROMPT)
@@ -133,8 +141,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logger.error(f"Hermanaki AI hatası: {e}")
             await message.reply_text(f"⚠️ AI Hatası: {e}")
-
-    # 3. NORMAL YAZILAN MESAJLAR: OTOMATİK C1 ÇEVİRİ (TR - RU - DE)
     else:
         try:
             reply = query_openrouter(text, TRANSLATE_PROMPT)
@@ -145,14 +151,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     application = Application.builder().token(TELEGRAM_TOKEN).build()
-    
-    # Resim çizim komutları (/ciz, /resim)
     application.add_handler(CommandHandler(["ciz", "resim"], draw_command))
-    
-    # Metin mesajları işleyicisi (Yapay Zeka Sohbet & Çeviri)
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    logger.info("Hermanaki AI Botu aktif (Google Gemma Free Modeli ile)...")
+    logger.info("Hermanaki AI Botu çoklu model oto-geçiş moduyla aktif...")
     application.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
