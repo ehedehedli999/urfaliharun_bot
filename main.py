@@ -34,29 +34,46 @@ def query_openrouter(prompt: str, system_prompt: str) -> str:
     url = "https://openrouter.ai/api/v1/chat/completions"
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "HTTP-Referer": "https://telegram.org",
+        "X-Title": "HermanakiBot",
         "Content-Type": "application/json"
     }
-    data = {
-        "model": "meta-llama/llama-3.3-70b-instruct:free",
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": prompt}
-        ]
-    }
-    response = requests.post(url, json=data, headers=headers, timeout=30)
-    response.raise_for_status()
-    result = response.json()
-    return result["choices"][0]["message"]["content"]
+    
+    # 404 engeli için aktif ve ücretsiz model alternatifleri
+    models_to_try = [
+        "meta-llama/llama-3.1-8b-instruct:free",
+        "google/gemini-2.0-flash-lite-001:free",
+        "qwen/qwen-2.5-72b-instruct:free"
+    ]
+    
+    last_error = ""
+    for model in models_to_try:
+        data = {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt}
+            ]
+        }
+        try:
+            response = requests.post(url, json=data, headers=headers, timeout=30)
+            if response.status_code == 200:
+                result = response.json()
+                return result["choices"][0]["message"]["content"]
+            else:
+                last_error = f"Status {response.status_code}: {response.text}"
+        except Exception as e:
+            last_error = str(e)
+            continue
+
+    raise Exception(f"Modellere erişilemedi: {last_error}")
 
 async def draw_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """/ciz veya /resim komutu çalıştığında resim üretir."""
     message = update.effective_message
     if not message:
         return
 
-    # Komut sonrası girilen prompt'u al
     prompt = " ".join(context.args).strip() if context.args else ""
-    
     if not prompt:
         await message.reply_text("🎨 Lütfen çizmemi istediğin resmi yaz.\nÖrnek: `/ciz uzayda yürüyen kedi`", parse_mode="Markdown")
         return
@@ -64,7 +81,6 @@ async def draw_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await generate_and_send_image(message, prompt)
 
 async def generate_and_send_image(message, prompt: str):
-    """Pollinations AI altyapısını kullanarak görsel üretir ve gönderir."""
     status_msg = await message.reply_text("🎨 *Hermanaki görseli çiziyor, lütfen bekleyin...*", parse_mode="Markdown")
     try:
         encoded_prompt = urllib.parse.quote(prompt)
@@ -88,7 +104,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = message.text.strip()
     bot_username = context.bot.username
 
-    # 1. MESAJ İÇİNDE "RESİM ÇİZ" VEYA "GÖRSEL ÇİZ" GEÇİYORSA GÖRSEL ÜRET
     lower_text = text.lower()
     if lower_text.startswith("resim çiz") or lower_text.startswith("görsel çiz"):
         prompt = text.split("çiz", 1)[-1].strip()
@@ -118,7 +133,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     clean_text = text.replace(f"@{bot_username}", "").strip()
 
-    # 2. BOTA ETİKET VEYA YANIT ATILDIYSA: HERMANAKI YAPAY ZEKA MODU
+    # 1. Bota etiket veya yanıt atıldıysa: Hermanaki Modu
     if is_mentioned or is_reply_to_bot:
         try:
             reply = query_openrouter(clean_text if clean_text else "Merhaba", HERMANAKI_SYSTEM_PROMPT)
@@ -127,7 +142,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             logger.error(f"Hermanaki AI hatası: {e}")
             await message.reply_text(f"⚠️ AI Hatası: {e}")
 
-    # 3. NORMAL YAZILAN MESAJLAR: OTOMATİK C1 ÇEVİRİ (TR - RU - DE)
+    # 2. Normal mesajlar: Otomatik C1 Çeviri (TR / RU / DE)
     else:
         try:
             reply = query_openrouter(text, TRANSLATE_PROMPT)
@@ -138,14 +153,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     application = Application.builder().token(TELEGRAM_TOKEN).build()
-    
-    # Resim çizim komutları
     application.add_handler(CommandHandler(["ciz", "resim"], draw_command))
-    
-    # Metin mesajları işleyici
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    logger.info("Hermanaki AI Botu (OpenRouter + Resim Çizim) aktif...")
+    logger.info("Hermanaki AI Botu aktif...")
     application.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
