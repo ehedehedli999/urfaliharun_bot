@@ -2,7 +2,8 @@ import os
 import logging
 from telegram import Update
 from telegram.ext import Application, MessageHandler, filters, ContextTypes
-from groq import Groq
+from google import genai
+from google.genai import types
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
@@ -10,9 +11,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
+gemini_client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
 
 BASE_SYSTEM_PROMPT = (
     "Sen Urfalı Harun adında zeki, akıcı ve doğrudan yanıt veren bir yapay zeka asistanısın. "
@@ -59,39 +60,39 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # 1. BOTA ETİKET VEYA YANIT ATILDIYSA: YAPAY ZEKA DESTEĞİ
     if is_mentioned or is_reply_to_bot:
-        if groq_client:
+        if gemini_client:
             try:
-                chat_completion = groq_client.chat.completions.create(
-                    messages=[
-                        {"role": "system", "content": BASE_SYSTEM_PROMPT},
-                        {"role": "user", "content": clean_text if clean_text else "Merhaba"}
-                    ],
-                    model="llama-3.3-70b-versatile",
+                response = gemini_client.models.generate_content(
+                    model='gemini-2.5-flash',
+                    contents=clean_text if clean_text else "Merhaba",
+                    config=types.GenerateContentConfig(
+                        system_instruction=BASE_SYSTEM_PROMPT
+                    )
                 )
-                await message.reply_text(chat_completion.choices[0].message.content)
+                await message.reply_text(response.text)
             except Exception as e:
-                logger.error(f"AI hatası: {e}")
-                await message.reply_text("Bir hata oluştu, lütfen GROQ_API_KEY değerini kontrol edin.")
+                logger.error(f"Gemini AI hatası: {e}")
+                await message.reply_text("Bir hata oluştu, lütfen GEMINI_API_KEY değerini kontrol edin.")
 
     # 2. NORMAL YAZILAN MESAJLAR: OTOMATİK C1 ÇEVİRİ
     else:
-        if groq_client:
+        if gemini_client:
             try:
-                chat_completion = groq_client.chat.completions.create(
-                    messages=[
-                        {"role": "system", "content": TRANSLATE_PROMPT},
-                        {"role": "user", "content": text}
-                    ],
-                    model="llama-3.3-70b-versatile",
+                response = gemini_client.models.generate_content(
+                    model='gemini-2.5-flash',
+                    contents=text,
+                    config=types.GenerateContentConfig(
+                        system_instruction=TRANSLATE_PROMPT
+                    )
                 )
-                await message.reply_text(chat_completion.choices[0].message.content)
+                await message.reply_text(response.text)
             except Exception as e:
-                logger.error(f"Çeviri hatası: {e}")
+                logger.error(f"Gemini Çeviri hatası: {e}")
 
 def main():
     application = Application.builder().token(TELEGRAM_TOKEN).build()
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    logger.info("Bot sadeleştirilmiş C1 Çeviri ve Yapay Zeka modunda çalışıyor...")
+    logger.info("Bot sadece Gemini C1 Çeviri ve Yapay Zeka modunda çalışıyor...")
     application.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
