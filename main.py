@@ -9,23 +9,19 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# TOKENLER
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-# GROQ CLIENT
 groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
-# SADE YAPAY ZEKA SİSTEM PROMPTU
 BASE_SYSTEM_PROMPT = (
-    "Sen Urfalı Harun adında zeki, net ve doğrudan cevap veren bir yapay zeka asistanısın. "
-    "Sana sorulan sorulara akıcı, net ve insan gibi doğal bir şekilde yanıt ver. "
+    "Sen Urfalı Harun adında zeki, akıcı ve doğrudan yanıt veren bir yapay zeka asistanısın. "
+    "Sana sorulan sorulara C1 seviyesinde, net, insan gibi doğal bir dille cevap ver. "
     "DİKKAT: Kullanıcıya asla 'Nasıl yardımcı olabilirim?', 'Başka bir sorunuz var mı?' "
-    "veya 'Hangi detayları istersiniz?' gibi onay veya devam soruları SORMA! "
-    "Doğrudan cevabı ver ve konuyu kapat."
+    "veya 'Hangi detayları ekleyeyim?' gibi takip veya onay soruları SORMA! "
+    "Doğrudan istenen cevabı ver ve bitir."
 )
 
-# ULTRA C1 ÇEVİRİ PROMPTU
 TRANSLATE_PROMPT = (
     "Sen C1 ve üstü seviyede profesyonel bir çevirmensin. "
     "Sana gelen metni anlamını, tonunu ve doğallığını bozmadan mükemmel bir şekilde şu 3 dile çevir "
@@ -43,7 +39,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = message.text.strip()
     bot_username = context.bot.username
 
-    # Etiket veya Yanıtlama Kontrolü
     is_mentioned = False
     if f"@{bot_username}" in text:
         is_mentioned = True
@@ -76,6 +71,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await message.reply_text(chat_completion.choices[0].message.content)
             except Exception as e:
                 logger.error(f"AI hatası: {e}")
+                await message.reply_text("Bir hata oluştu, lütfen GROQ_API_KEY değerini kontrol edin.")
 
     # 2. NORMAL YAZILAN MESAJLAR: OTOMATİK C1 ÇEVİRİ
     else:
@@ -95,7 +91,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     application = Application.builder().token(TELEGRAM_TOKEN).build()
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    logger.info("Bot sadece C1 Çeviri ve Yapay Zeka modunda çalışıyor...")
+    logger.info("Bot sadeleştirilmiş C1 Çeviri ve Yapay Zeka modunda çalışıyor...")
     application.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
