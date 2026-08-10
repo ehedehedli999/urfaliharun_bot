@@ -33,17 +33,29 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# --- SİSTEM PROMPTLARI (HER DURUMDA 3 DİL ZORUNLU) ---
 SMART_PROMPT = """
 Sen Viyana AI Bot'un Zeki modusun. Yapımcın Ehed'dir.
-Çok zeki, bilgili, analitik, kültürlü ve mantıklı konuş.
-Kullanıcının sorusuna doğrudan, doğal ve doğru cevap ver.
-Sadece Türkçe, Rusça ve Almanca dillerini destekle.
+Çok zeki, bilgili, analitik ve kültürlü konuş.
+Kullanıcının sorusuna veya mesajına SADECE aşağıdaki 3 dilde ayrı ayrı başlık açarak yanıt ver:
+
+Türkçe: [Yanıtın]
+Rusça: [Yanıtın]
+Almanca: [Yanıtın]
+
+Başka hiçbir dil kullanma.
 """
 
 AGGRESSIVE_PROMPT = """
 Sen Viyana AI Bot'un Agresif modusun. Yapımcın Ehed'dir.
-Sert, özgüvenli, direkt, keskin, hafif alaycı konuş.
-Sadece Türkçe, Rusça ve Almanca dillerini destekle.
+Sert, özgüvenli, direkt, keskin ve alaycı konuş.
+Yanıtını SADECE aşağıdaki 3 dilde ayrı ayrı başlık açarak ver:
+
+Türkçe: [Yanıtın]
+Rusça: [Yanıtın]
+Almanca: [Yanıtın]
+
+Başka hiçbir dil kullanma.
 """
 
 TRANSLATION_PROMPT = """
@@ -171,7 +183,11 @@ async def cmd_burc(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     try:
         active_langs = get_active_prompt_languages(chat_id)
-        prompt = f"'{burc_adi}' burcu için bugün özel günlük burç yorumu yap. Cevabı SADECE şu dillerde ver: {active_langs}."
+        prompt = (
+            f"'{burc_adi}' burcu için günlük burç yorumu yap.\n"
+            f"Cevabı ŞU DİLLERİN HER BİRİNDE AYRI BAŞLIK AÇARAK VER: {active_langs}.\n"
+            f"Örnek Format:\nTürkçe: ...\nRusça: ...\nAlmanca: ..."
+        )
         res = await query_grok(prompt, "Sen Viyana AI astroloğusun.")
         filtered_res = filter_disabled_languages(chat_id, res)
         await update.message.reply_text(f"⭐ **BURÇ YORUMU ({burc_adi.upper()}):**\n\n{filtered_res}")
@@ -183,10 +199,14 @@ async def cmd_joke(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     try:
         active_langs = get_active_prompt_languages(chat_id)
-        prompt = f"Bana komik bir espri söyler misin? Cevabı SADECE şu dillerde ver: {active_langs}."
+        prompt = (
+            f"Bana çok komik bir espri söyler misin?\n"
+            f"Espriyi ŞU DİLLERİN HER BİRİNDE AYRI BAŞLIK AÇARAK YAZ: {active_langs}.\n"
+            f"Örnek Format:\nTürkçe: [Espri]\nRusça: [Espri]\nAlmanca: [Espri]"
+        )
         res = await query_grok(prompt, "Sen Viyana AI komedyenisin.")
         filtered_res = filter_disabled_languages(chat_id, res)
-        await update.message.reply_text(f"😂 {filtered_res}")
+        await update.message.reply_text(f"😂 **ŞAKA / ESPRİ:**\n\n{filtered_res}")
     except Exception as e:
         logger.error(f"Error in joke: {e}")
         await update.message.reply_text("⚠️ Bir hata oluştu, lütfen tekrar deneyin.")
@@ -196,10 +216,14 @@ async def cmd_fal(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_name = update.effective_user.first_name
     try:
         active_langs = get_active_prompt_languages(chat_id)
-        prompt = f"{user_name} için bugün özel komik kahve falı yorumu yap. Cevabı SADECE şu dillerde ver: {active_langs}."
+        prompt = (
+            f"{user_name} için komik ve eğlenceli bir kahve falı yorumu yap.\n"
+            f"Cevabı ŞU DİLLERİN HER BİRİNDE AYRI BAŞLIK AÇARAK YAZ: {active_langs}.\n"
+            f"Örnek Format:\nTürkçe: ...\nRusça: ...\nAlmanca: ..."
+        )
         res = await query_grok(prompt, "Sen Viyana AI falcısısın.")
         filtered_res = filter_disabled_languages(chat_id, res)
-        await update.message.reply_text(f"🔮 **{user_name} Fal:**\n\n{filtered_res}")
+        await update.message.reply_text(f"🔮 **FAL ({user_name}):**\n\n{filtered_res}")
     except Exception as e:
         logger.error(f"Error in fal: {e}")
         await update.message.reply_text("⚠️ Bir hata oluştu, lütfen tekrar deneyin.")
@@ -212,7 +236,11 @@ async def cmd_sarcasm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     try:
         active_langs = get_active_prompt_languages(chat_id)
-        prompt = f"Şu cümleyi aşırı alaycı/ironik şekilde yanıtla: '{msg}'. Cevabı SADECE şu dillerde ver: {active_langs}."
+        prompt = (
+            f"Şu cümleyi aşırı alaycı/ironik şekilde yanıtla: '{msg}'.\n"
+            f"Yanıtı ŞU DİLLERİN HER BİRİNDE AYRI BAŞLIK AÇARAK YAZ: {active_langs}.\n"
+            f"Örnek Format:\nTürkçe: ...\nRusça: ...\nAlmanca: ..."
+        )
         res = await query_grok(prompt, "Sen alaycı Viyana AI botusun.")
         filtered_res = filter_disabled_languages(chat_id, res)
         await update.message.reply_text(f"😏 {filtered_res}")
@@ -225,10 +253,14 @@ async def cmd_kader(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_name = update.effective_user.first_name
     try:
         active_langs = get_active_prompt_languages(chat_id)
-        prompt = f"{user_name} için bugün başına gelecek komik bir kader durumu uydur. Cevabı SADECE şu dillerde ver: {active_langs}."
+        prompt = (
+            f"{user_name} için bugün başına gelecek komik bir kader durumu uydur.\n"
+            f"Cevabı ŞU DİLLERİN HER BİRİNDE AYRI BAŞLIK AÇARAK YAZ: {active_langs}.\n"
+            f"Örnek Format:\nTürkçe: ...\nRusça: ...\nAlmanca: ..."
+        )
         res = await query_grok(prompt, "Sen kader çarkısın.")
         filtered_res = filter_disabled_languages(chat_id, res)
-        await update.message.reply_text(f"🎲 **Kader:**\n\n{filtered_res}")
+        await update.message.reply_text(f"🎲 **KADER ({user_name}):**\n\n{filtered_res}")
     except Exception as e:
         logger.error(f"Error in kader: {e}")
         await update.message.reply_text("⚠️ Bir hata oluştu, lütfen tekrar deneyin.")
@@ -256,7 +288,11 @@ async def cmd_kurban(update: Update, context: ContextTypes.DEFAULT_TYPE):
     kurban = random.choice(list(scores.values()))
     try:
         active_langs = get_active_prompt_languages(chat_id)
-        prompt = f"Gruptan {kurban['name']} kurban seçildi. Ona komik bir unvan ver. Cevabı SADECE şu dillerde ver: {active_langs}."
+        prompt = (
+            f"Gruptan {kurban['name']} kurban seçildi. Ona komik bir unvan ve ceza ver.\n"
+            f"Cevabı ŞU DİLLERİN HER BİRİNDE AYRI BAŞLIK AÇARAK YAZ: {active_langs}.\n"
+            f"Örnek Format:\nTürkçe: ...\nRusça: ...\nAlmanca: ..."
+        )
         res = await query_grok(prompt, "Sen komik sunucusun.")
         filtered_res = filter_disabled_languages(chat_id, res)
         await update.message.reply_text(f"🎯 **KURBAN:** {kurban['name']}\n\n{filtered_res}")
@@ -273,7 +309,11 @@ async def cmd_dedikodu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     users = random.sample(list(scores.values()), 2)
     try:
         active_langs = get_active_prompt_languages(chat_id)
-        prompt = f"{users[0]['name']} ve {users[1]['name']} hakkında komik dedikodu yaz. Cevabı SADECE şu dillerde ver: {active_langs}."
+        prompt = (
+            f"{users[0]['name']} ve {users[1]['name']} hakkında komik uydurma bir dedikodu yaz.\n"
+            f"Cevabı ŞU DİLLERİN HER BİRİNDE AYRI BAŞLIK AÇARAK YAZ: {active_langs}.\n"
+            f"Örnek Format:\nTürkçe: ...\nRusça: ...\nAlmanca: ..."
+        )
         res = await query_grok(prompt, "Sen magazin muhabirisin.")
         filtered_res = filter_disabled_languages(chat_id, res)
         await update.message.reply_text(f"🚨 **DEDİKODU:**\n\n{filtered_res}")
@@ -285,7 +325,11 @@ async def cmd_bilgi(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     try:
         active_langs = get_active_prompt_languages(chat_id)
-        prompt = f"Bana şıklı genel kültür sorusu sor. Soruyu SADECE şu dillerde ver: {active_langs}."
+        prompt = (
+            f"Bana şıklı genel kültür sorusu sor.\n"
+            f"Soruyu ŞU DİLLERİN HER BİRİNDE AYRI BAŞLIK AÇARAK SOR: {active_langs}.\n"
+            f"Örnek Format:\nTürkçe: ...\nRusça: ...\nAlmanca: ..."
+        )
         res = await query_grok(prompt, "Sen yarışma sunucususun.")
         filtered_res = filter_disabled_languages(chat_id, res)
         await update.message.reply_text(f"🧠 **KİM BİLİR?**\n\n{filtered_res}")
@@ -381,7 +425,6 @@ def main():
     application.add_handler(CommandHandler("turkce", toggle_turkce))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    # Render üzerinde çakışma yaşamamak için
     application.run_polling(drop_pending_updates=True, close_loop=False)
 
 if __name__ == "__main__":
