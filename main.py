@@ -1,9 +1,9 @@
 import logging
 import os
 import random
-import re
 from datetime import datetime, timedelta
 import httpx
+from langdetect import detect, DetectorFactory
 from telegram import Update
 from telegram.ext import (
     Application,
@@ -13,7 +13,10 @@ from telegram.ext import (
     filters,
 )
 
-# Tokenlar
+# Dil tespitini kararlı kılmak için
+DetectorFactory.seed = 0
+
+# Eski Token'ın Sabitlendi
 TELEGRAM_TOKEN = "8363449973:AAFWPie-yjpJn1vHQxSKeykVKjq2Pt3Lo1k"
 XAI_API_KEY = "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"
 
@@ -21,7 +24,6 @@ XAI_API_KEY = "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"
 XAI_URL = "https://api.groq.com/openai/v1/chat/completions"
 GROK_MODEL = "llama-3.1-8b-instant"
 
-# Veri Depoları
 USER_SCORES = {}           
 DAILY_KING = {}            
 
@@ -31,7 +33,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# --- SİSTEM PROMPTLARI ---
 SMART_PROMPT = """
 Sen Viyana AI Bot'usun. Yapımcın Ehed'dir.
 Kullanıcının sorusuna veya mesajına SADECE aşağıdaki 3 dilde ayrı ayrı yanıt ver:
@@ -39,31 +40,6 @@ Kullanıcının sorusuna veya mesajına SADECE aşağıdaki 3 dilde ayrı ayrı 
 Türkçe: [Yanıtın]
 Rusça: [Yanıtın]
 Almanca: [Yanıtın]
-"""
-
-# KUSURSUZ VE ORİJİNAL DİLİ TEKRARLAMAYAN ÇEVİRİ PROMPTU
-STRICT_NATIVE_TRANSLATE_PROMPT = """
-Sen kusursuz, yerel (native) bir çevirmensin.
-
-GÖREVİN:
-1. Sana verilen mesajın dilini (Türkçe, Rusça veya Almanca) tespit et.
-2. MESAJIN KENDİ DİLİNİ ASLA YAZMA VE O DİLE ÇEVİRME. Sadece DİĞER İKİ DİLE çeviri yap.
-
-KURALLAR:
-- Eğer mesaj TÜRKÇE ise ➔ SADECE Rusça ve Almanca çeviri ver.
-- Eğer mesaj RUSÇA ise ➔ SADECE Türkçe ve Almanca çeviri ver.
-- Eğer mesaj ALMANCA ise ➔ SADECE Türkçe ve Rusça çeviri ver.
-- Çeviriler ultra doğal, günlük insan konuşma dilinde olsun.
-- "Dil 1", "Dil 2" gibi saçma yazılar yazma! Direkt dillerin adını yaz.
-- Eğer mesaj çevrilemez saçma bir şeyse ("asdasd", sadece emojiler vb.) SADECE "SKIP" yanıtını ver.
-
-FORMAT ÖRNEĞİ (Mesaj Türkçe yazıldıysa):
-Rusça: [Doğal Rusça Çevirisi]
-Almanca: [Doğal Almanca Çevirisi]
-
-FORMAT ÖRNEĞİ (Mesaj Rusça yazıldıysa):
-Türkçe: [Doğal Türkçe Çevirisi]
-Almanca: [Doğal Almanca Çevirisi]
 """
 
 async def query_grok(prompt: str, system_prompt: str) -> str:
@@ -77,7 +53,7 @@ async def query_grok(prompt: str, system_prompt: str) -> str:
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt},
         ],
-        "temperature": 0.2, # Hata yapmaması için düşük tutuldu
+        "temperature": 0.2,
     }
     async with httpx.AsyncClient(timeout=30.0) as client:
         response = await client.post(XAI_URL, headers=headers, json=data)
@@ -85,7 +61,7 @@ async def query_grok(prompt: str, system_prompt: str) -> str:
             result = response.json()
             return result["choices"][0]["message"]["content"].strip()
         else:
-            logger.error(f"Groq API Error Status: {response.status_code}, Body: {response.text}")
+            logger.error(f"Groq API Error Status: {response.status_code}")
             raise Exception(f"API_ERROR_{response.status_code}")
 
 def add_point(chat_id: int, user):
@@ -106,7 +82,7 @@ def get_level(points: int) -> str:
     if points < 7000: return "👑 Viyana Savaşçısı / Воин Вены / Wiener Krieger"
     return "🔥 Viyana Efsanesi / Легенда Вены / Wiener Legende"
 
-# --- OTOMATİK MESAJ VE AKILLI ÇEVİRİ İŞLEYİCİSİ ---
+# --- AKILLI ÇEVİRİ VE DİL FİLTRESİ ---
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.effective_message
     if not message or not message.text: return
@@ -114,16 +90,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = message.chat_id
     user = update.effective_user
 
-    # Bot kendi mesajlarını veya komutları çevirmesin
+    # Bot veya Komutlar muaf tutulur
     if user.is_bot or text.startswith("/"):
         return
 
-    # Puan ekle
     add_point(chat_id, user)
-
     bot_username = context.bot.username or ""
 
-    # 1. BOT ETİKETLENDİYSE (AI Doğrudan Yanıt Verir)
+    # 1. BOT ETİKETLENDİYSE (Doğrudan Yapay Zeka Cevabı)
     if bot_username and f"@{bot_username}".lower() in text.lower():
         clean_text = text.replace(f"@{bot_username}", "").strip()
         if not clean_text: return
@@ -135,43 +109,79 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await message.reply_text("⚠️ Bir hata oluştu, lütfen tekrar deneyin.")
         return
 
-    # 2. OTOMATİK ÇEVİRİ (Kendi Dilini Hariç Tutan Sistem)
+    # Çok kısa kelimeler, linkler veya anlamsız metinler çevrilmez
     words = text.split()
     if len(words) < 2 or len(text) < 5 or "http" in text:
         return
 
+    # 2. PYTHON İLE KESİN DİL TESPİTİ
     try:
-        translated = await query_grok(text, STRICT_NATIVE_TRANSLATE_PROMPT)
+        lang = detect(text)
+    except Exception:
+        lang = "tr"
+
+    # Mesajın yazıldığı dille çakışmayan özel prompt atanır
+    if lang == "tr":
+        target_prompt = """
+        Sana verilen metin TÜRKÇE yazılmıştır.
+        Bu cümleyi konuşma diline uygun, doğal ve insansı bir üslupla SADECE Rusça ve Almanca'ya çevir.
+        ASLA Türkçe yazma ve "Dil 1", "Dil 2" gibi başlıklar atma!
+
+        Rusça: [Çeviri]
+        Almanca: [Çeviri]
+        """
+    elif lang == "ru":
+        target_prompt = """
+        Sana verilen metin RUSÇA yazılmıştır.
+        Bu cümleyi konuşma diline uygun, doğal ve insansı bir üslupla SADECE Türkçe ve Almanca'ya çevir.
+        ASLA Rusça yazma ve "Dil 1", "Dil 2" gibi başlıklar atma!
+
+        Türkçe: [Çeviri]
+        Almanca: [Çeviri]
+        """
+    elif lang == "de":
+        target_prompt = """
+        Sana verilen metin ALMANCA yazılmıştır.
+        Bu cümleyi konuşma diline uygun, doğal ve insansı bir üslupla SADECE Türkçe ve Rusça'ya çevir.
+        ASLA Almanca yazma ve "Dil 1", "Dil 2" gibi başlıklar atma!
+
+        Türkçe: [Çeviri]
+        Rusça: [Çeviri]
+        """
+    else:
+        target_prompt = """
+        Bu cümleyi ultra doğal şekilde SADECE Türkçe ve Almanca'ya çevir.
         
-        # Filtre: Eğer AI SKIP dediyse, anlamsız yanıt verdiyse veya bir hata olduysa sus
-        if "SKIP" in translated or len(translated) < 4:
-            return
-            
+        Türkçe: [Çeviri]
+        Almanca: [Çeviri]
+        """
+
+    try:
+        translated = await query_grok(text, target_prompt)
+        if len(translated) < 4: return
         await message.reply_text(translated)
     except Exception as e:
         logger.error(f"Auto translation error: {e}")
 
-# --- HELP MENÜSÜ ---
+# --- BOT KOMUTLARI ---
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
         "🤖 **VİYANA AI — BOT MENÜSÜ**\n"
         "👑 *Yapımcı / Creator: Ehed*\n"
         "───────────────────────────────\n\n"
         "🗣️ **OTOMATİK ÇEVİRİ AÇIK!**\n"
-        "• Yazılan mesajlar tespit edilir ve yazılan dil hariç diğer 2 dile otomatik çevrilir.\n\n"
-        "🎮 **EĞLENCE & OYUNLAR**\n"
+        "• Yazılan mesaj tespit edilir ve yazılan dil hariç diğer 2 dile çevrilir.\n\n"
+        "🎮 **KOMUTLAR**\n"
         "• `/burc <burç_adı>` — Günlük burç yorumu\n"
         "• `/fal` — Günlük kahve falı\n"
-        "• `/kral` — Grubun 24 saatlik Kralını seçer\n"
-        "• `/kurban` — Günün kurbanını seçer\n"
+        "• `/kral` — Grubun 24 saatlik Kralı\n"
+        "• `/kurban` — Günün kurbanı\n"
         "• `/dedikodu` — Gruptakiler hakkında uydurma haber\n"
-        "• `/sarcasm <metin>` — Alaycı/ironik cevap\n"
-        "• `/joke` — Komik espri / şaka\n"
+        "• `/sarcasm <metin>` — Alaycı cevap\n"
+        "• `/joke` — Şaka / espri\n"
         "• `/kader` — Günlük kader çarkı\n"
         "• `/bilgi` — Genel kültür sorusu\n"
-        "• `/siralama` — Puan sıralaması\n"
-        "───────────────────────────────\n"
-        "💡 *Bot etiketlendiğinde (@ViyanaAi) AI doğrudan yanıt verir.*"
+        "• `/siralama` — Puan sıralaması"
     )
     await update.message.reply_text(text, parse_mode="Markdown")
 
@@ -181,30 +191,27 @@ async def cmd_burc(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("✨ Lütfen bir burç adı yazın! Örn: `/burc koc`", parse_mode="Markdown")
         return
     try:
-        prompt = f"'{burc_adi}' burcu için günlük burç yorumu yap. Cevabı Türkçe, Rusça ve Almanca olarak 3 dilde sırayla yaz."
+        prompt = f"'{burc_adi}' burcu için günlük yorum yap. Türkçe, Rusça ve Almanca yaz."
         res = await query_grok(prompt, "Sen Viyana AI astroloğusun.")
         await update.message.reply_text(f"⭐ **BURÇ YORUMU ({burc_adi.upper()}):**\n\n{res}")
-    except Exception as e:
-        logger.error(f"Error in burc: {e}")
+    except Exception:
         await update.message.reply_text("⚠️ Bir hata oluştu.")
 
 async def cmd_joke(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        prompt = "Bana komik bir espri söyler misin? Cevabı Türkçe, Rusça ve Almanca olmak üzere 3 dilde sırayla yaz."
+        prompt = "Bana komik bir espri söyler misin? Türkçe, Rusça ve Almanca olarak yaz."
         res = await query_grok(prompt, "Sen Viyana AI komedyenisin.")
         await update.message.reply_text(f"😂 **ŞAKA / ESPRİ:**\n\n{res}")
-    except Exception as e:
-        logger.error(f"Error in joke: {e}")
+    except Exception:
         await update.message.reply_text("⚠️ Bir hata oluştu.")
 
 async def cmd_fal(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_name = update.effective_user.first_name
     try:
-        prompt = f"{user_name} için komik ve eğlenceli kahve falı yorumu yap. Cevabı Türkçe, Rusça ve Almanca dillerinde yaz."
+        prompt = f"{user_name} için komik kahve falı yorumu yap. Türkçe, Rusça ve Almanca dillerinde yaz."
         res = await query_grok(prompt, "Sen Viyana AI falcısısın.")
         await update.message.reply_text(f"🔮 **FAL ({user_name}):**\n\n{res}")
-    except Exception as e:
-        logger.error(f"Error in fal: {e}")
+    except Exception:
         await update.message.reply_text("⚠️ Bir hata oluştu.")
 
 async def cmd_sarcasm(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -213,21 +220,19 @@ async def cmd_sarcasm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Lütfen bir cümle yazın!")
         return
     try:
-        prompt = f"Şu cümleyi aşırı alaycı/ironik şekilde yanıtla: '{msg}'. Yanıtı Türkçe, Rusça ve Almanca dillerinde ver."
+        prompt = f"Şu cümleyi aşırı alaycı/ironik şekilde yanıtla: '{msg}'. Türkçe, Rusça ve Almanca yaz."
         res = await query_grok(prompt, "Sen alaycı Viyana AI botusun.")
         await update.message.reply_text(f"😏 {res}")
-    except Exception as e:
-        logger.error(f"Error in sarcasm: {e}")
+    except Exception:
         await update.message.reply_text("⚠️ Bir hata oluştu.")
 
 async def cmd_kader(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_name = update.effective_user.first_name
     try:
-        prompt = f"{user_name} için bugün başına gelecek komik bir kader durumu uydur. Cevabı Türkçe, Rusça ve Almanca dillerinde ver."
+        prompt = f"{user_name} için bugün başına gelecek komik bir kader uydur. Türkçe, Rusça ve Almanca yaz."
         res = await query_grok(prompt, "Sen kader çarkısın.")
         await update.message.reply_text(f"🎲 **KADER ({user_name}):**\n\n{res}")
-    except Exception as e:
-        logger.error(f"Error in kader: {e}")
+    except Exception:
         await update.message.reply_text("⚠️ Bir hata oluştu.")
 
 async def cmd_kral(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -238,7 +243,7 @@ async def cmd_kral(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     now = datetime.now()
     if chat_id in DAILY_KING and now - DAILY_KING[chat_id]["date"] < timedelta(hours=24):
-        await update.message.reply_text(f"👑 **BUGÜNÜN KRALI:** {DAILY_KING[chat_id]['name']}! (24 Saat) 🙇‍♂️")
+        await update.message.reply_text(f"👑 **BUGÜNÜN KRALI:** {DAILY_KING[chat_id]['name']}! 🙇‍♂️")
         return
     kral = random.choice(list(scores.values()))
     DAILY_KING[chat_id] = {"name": kral["name"], "date": now}
@@ -255,8 +260,7 @@ async def cmd_kurban(update: Update, context: ContextTypes.DEFAULT_TYPE):
         prompt = f"Gruptan {kurban['name']} kurban seçildi. Ona komik bir unvan ver. Türkçe, Rusça ve Almanca yaz."
         res = await query_grok(prompt, "Sen komik sunucusun.")
         await update.message.reply_text(f"🎯 **KURBAN:** {kurban['name']}\n\n{res}")
-    except Exception as e:
-        logger.error(f"Error in kurban: {e}")
+    except Exception:
         await update.message.reply_text("⚠️ Bir hata oluştu.")
 
 async def cmd_dedikodu(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -270,17 +274,15 @@ async def cmd_dedikodu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         prompt = f"{users[0]['name']} ve {users[1]['name']} hakkında komik dedikodu yaz. Türkçe, Rusça ve Almanca dillerinde ver."
         res = await query_grok(prompt, "Sen magazin muhabirisin.")
         await update.message.reply_text(f"🚨 **DEDİKODU:**\n\n{res}")
-    except Exception as e:
-        logger.error(f"Error in dedikodu: {e}")
+    except Exception:
         await update.message.reply_text("⚠️ Bir hata oluştu.")
 
 async def cmd_bilgi(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        prompt = "Bana şıklı genel kültür sorusu sor. Soruyu Türkçe, Rusça ve Almanca dillerinde yaz."
+        prompt = "Bana şıklı genel kültür sorusu sor. Türkçe, Rusça ve Almanca dillerinde yaz."
         res = await query_grok(prompt, "Sen yarışma sunucususun.")
         await update.message.reply_text(f"🧠 **KİM BİLİR?**\n\n{res}")
-    except Exception as e:
-        logger.error(f"Error in bilgi: {e}")
+    except Exception:
         await update.message.reply_text("⚠️ Bir hata oluştu.")
 
 async def cmd_siralama(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -299,7 +301,7 @@ async def cmd_siralama(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     application = Application.builder().token(TELEGRAM_TOKEN).build()
     
-    # Komutlar
+    # Handler/Komut Kayıtları
     application.add_handler(CommandHandler("help", cmd_help))
     application.add_handler(CommandHandler("burc", cmd_burc))
     application.add_handler(CommandHandler("fal", cmd_fal))
@@ -313,10 +315,10 @@ def main():
     application.add_handler(CommandHandler("puan", cmd_siralama))
     application.add_handler(CommandHandler("siralama", cmd_siralama))
     
-    # Mesaj Dinleyici
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
     application.run_polling(drop_pending_updates=True, close_loop=False)
 
 if __name__ == "__main__":
     main()
+
