@@ -14,7 +14,7 @@ from telegram.ext import (
 TELEGRAM_TOKEN = "8363449973:AAFWPie-yjpJn1vHQxSKeykVKjq2Pt3Lo1k"
 XAI_API_KEY = "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"
 
-# Groq API Endpoint & Güncel Model (Llama 3.3)
+# Groq API Endpoint & Güncel Model (Llama 3.3 70B)
 XAI_URL = "https://api.groq.com/openai/v1/chat/completions"
 GROK_MODEL = "llama-3.3-70b-versatile"
 
@@ -57,40 +57,39 @@ Ciddi tehdit, şiddet teşviki veya nefret söylemi oluşturma.
 Doğrudan cevap ver.
 """
 
+# KUSURSUZ VE ANADİL SEVİYESİNDE ÇEVİRİ PROMPT'U
 TRANSLATION_PROMPT = """
-Sen C1-C2 seviyesinde profesyonel bir çevirmensin.
-SADECE Türkçe, Rusça ve Almanca arasında çeviri yap.
+Sen hedef dillerin kültürüne, deyimlerine, argosuna ve günlük konuşma kalıplarına %100 hakim, anadili seviyesinde profesyonel bir uzmansın.
+SADECE Türkçe, Rusça ve Almanca dilleri arasında çeviri yap.
 
-Kurallar:
-Rusça → Türkçe + Almanca
-Türkçe → Rusça + Almanca
-Almanca → Türkçe + Rusça
+GÖREVİN VE ÇEVİRİ FELSEFEN:
+- Asla mekanik veya doğrudan (birebir) sözlük çevirisi yapma.
+- Metnin duygu tonunu, samimiyetini, vurgusunu ve alt metnini tam olarak koru.
+- Çevirilerin sanki Moskova'da, Berlin'de veya İstanbul'da doğup büyümüş bir sokak/günlük hayat yerlisi tarafından yazılmış gibi tam anadil doğallığında olmalı (Native-like fluency).
+- Metindeki argo, jargon, sokak dili veya kalıpları hedef dildeki EN BİREBİR KARŞILIĞI olan deyim ve ifadelerle değiştir.
 
-Başka dilleri destekleme.
-Çeviriler doğal, akıcı, bağlama uygun ve C1 seviyesinde olsun.
-Kelime kelime mekanik çeviri yapma.
-Anlamı, tonu, duyguyu, deyimleri ve konuşma tarzını koru.
+DİL EŞLEŞTİRMELERİ:
+Rusça metin gelirse → Türkçe ve Almanca'ya çevir.
+Türkçe metin gelirse → Rusça ve Almanca'ya çevir.
+Almanca metin gelirse → Türkçe ve Rusça'ya çevir.
 
-Sadece ilgili iki çeviriyi göster.
+ÇIKTI FORMATI:
+Sadece ilgili iki çeviriyi göster. Giriş metni, açıklama veya "İşte çeviriniz" gibi ibareler ASLA ekleme.
 
-Rusça:
-Türkçe: ...
-Almanca: ...
-
-Türkçe:
+Örnek Format:
 Rusça: ...
 Almanca: ...
 
-Almanca:
+(Veya metin Rusça ise):
+Türkçe: ...
+Almanca: ...
+
+(Veya metin Almanca ise):
 Türkçe: ...
 Rusça: ...
 
-Kaynak metni tekrar yazma.
-Başka açıklama yapma.
-
-Desteklenmeyen bir dil gelirse sadece:
+Eğer metin bu üç dilden (Türkçe, Rusça, Almanca) biri değilse SADECE şu kelimeyi yaz:
 DESTEKLENMEYEN_DIL
-yaz.
 """
 
 
@@ -106,7 +105,7 @@ async def query_grok(prompt: str, system_prompt: str) -> str:
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt},
         ],
-        "temperature": 0.7,
+        "temperature": 0.5, # Doğallığı korurken tutarlı anadil çevirisi için ideal sıcaklık
     }
 
     async with httpx.AsyncClient(timeout=90.0) as client:
