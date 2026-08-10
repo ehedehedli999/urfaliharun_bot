@@ -4,6 +4,7 @@ import httpx
 from telegram import Update
 from telegram.ext import (
     Application,
+    CommandHandler,
     ContextTypes,
     MessageHandler,
     filters,
@@ -18,6 +19,7 @@ XAI_URL = "https://api.groq.com/openai/v1/chat/completions"
 GROK_MODEL = "llama-3.3-70b-versatile"
 
 CHAT_MODES = {}
+TRANSLATION_SETTINGS = {}  # Sohbet bazlı çeviri durumunu tutar (True / False)
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -211,6 +213,19 @@ async def handle_translation(message, text: str):
         await message.reply_text(f"⚠️ Çeviri Hatası:\n{e}")
 
 
+# Otomatik çeviriyi açma/kapatma komutu
+async def toggle_translation(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    current_status = TRANSLATION_SETTINGS.get(chat_id, True)
+    new_status = not current_status
+    TRANSLATION_SETTINGS[chat_id] = new_status
+
+    if new_status:
+        await update.effective_message.reply_text("🌐 Otomatik çeviri **AÇILDI**.")
+    else:
+        await update.effective_message.reply_text("🚫 Otomatik çeviri **KAPATILDI**.")
+
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.effective_message
     if not message or not message.text:
@@ -242,7 +257,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_ai(message, clean_text, mode)
         return
 
-    await handle_translation(message, text)
+    # Otomatik Çeviri Kontrolü (Varsayılan Açık)
+    if TRANSLATION_SETTINGS.get(chat_id, True):
+        await handle_translation(message, text)
 
 
 async def error_handler(update, context: ContextTypes.DEFAULT_TYPE):
@@ -251,6 +268,9 @@ async def error_handler(update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     application = Application.builder().token(TELEGRAM_TOKEN).build()
+
+    # /ceviri komut işleyicisi
+    application.add_handler(CommandHandler("ceviri", toggle_translation))
 
     application.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)
