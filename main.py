@@ -41,25 +41,29 @@ Rusça: [Yanıtın]
 Almanca: [Yanıtın]
 """
 
-# EN ÜST SEVİYE İNSANSI ÇEVİRİ PROMPTU
-NATIVE_TRANSLATE_PROMPT = """
-Sen ana dili Türkçe, Rusça ve Almanca olan ultra yetenekli, yerel (native) bir çevirmensin.
+# KUSURSUZ VE ORİJİNAL DİLİ TEKRARLAMAYAN ÇEVİRİ PROMPTU
+STRICT_NATIVE_TRANSLATE_PROMPT = """
+Sen kusursuz, yerel (native) bir çevirmensin.
 
 GÖREVİN:
-Gelen mesajı analiz et. Dili tespit et ve DİĞER İKİ DİLE çevir.
+1. Sana verilen mesajın dilini (Türkçe, Rusça veya Almanca) tespit et.
+2. MESAJIN KENDİ DİLİNİ ASLA YAZMA VE O DİLE ÇEVİRME. Sadece DİĞER İKİ DİLE çeviri yap.
 
-KURALLAR (ÇOK ÖNEMLİ):
-1. ASLA kelime kelime veya robotik çeviri yapma! Çeviriyi, o dili doğuştan konuşan bir insanın günlük hayatta arkadaşına yazacağı en doğal, en akıcı ve en içten ifadeyle yap.
-2. Argo, deyim veya samimi ifadeler varsa hedef dildeki EN BİREBİR YEREL KARŞILIĞINI kullan.
-3. Eğer gelen mesaj saçmaysa, rastgele harflerden oluşuyorsa (örn: "asdasd", "qwerty"), sadece simgeler/emojiler varsa veya çevrilecek mantıklı bir cümle değilse SADECE "SKIP" yaz.
+KURALLAR:
+- Eğer mesaj TÜRKÇE ise ➔ SADECE Rusça ve Almanca çeviri ver.
+- Eğer mesaj RUSÇA ise ➔ SADECE Türkçe ve Almanca çeviri ver.
+- Eğer mesaj ALMANCA ise ➔ SADECE Türkçe ve Rusça çeviri ver.
+- Çeviriler ultra doğal, günlük insan konuşma dilinde olsun.
+- "Dil 1", "Dil 2" gibi saçma yazılar yazma! Direkt dillerin adını yaz.
+- Eğer mesaj çevrilemez saçma bir şeyse ("asdasd", sadece emojiler vb.) SADECE "SKIP" yanıtını ver.
 
-ÇIKTI FORMATI:
-[Dil 1]: [Doğal İnsansı Çeviri]
-[Dil 2]: [Doğal İnsansı Çeviri]
+FORMAT ÖRNEĞİ (Mesaj Türkçe yazıldıysa):
+Rusça: [Doğal Rusça Çevirisi]
+Almanca: [Doğal Almanca Çevirisi]
 
-Örnek (Gelen: "Kanka naber ne yapıyorsun?"):
-Rusça: Братан, как дела? Чем занимаешься?
-Almanca: Ey wie geht's Bro, was machst du so?
+FORMAT ÖRNEĞİ (Mesaj Rusça yazıldıysa):
+Türkçe: [Doğal Türkçe Çevirisi]
+Almanca: [Doğal Almanca Çevirisi]
 """
 
 async def query_grok(prompt: str, system_prompt: str) -> str:
@@ -73,7 +77,7 @@ async def query_grok(prompt: str, system_prompt: str) -> str:
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt},
         ],
-        "temperature": 0.3, # Doğallık ve doğruluk dengesi için optimize edildi
+        "temperature": 0.2, # Hata yapmaması için düşük tutuldu
     }
     async with httpx.AsyncClient(timeout=30.0) as client:
         response = await client.post(XAI_URL, headers=headers, json=data)
@@ -102,7 +106,7 @@ def get_level(points: int) -> str:
     if points < 7000: return "👑 Viyana Savaşçısı / Воин Вены / Wiener Krieger"
     return "🔥 Viyana Efsanesi / Легенда Вены / Wiener Legende"
 
-# --- OTOMATİK MESAJ VE İNSANSI ÇEVİRİ İŞLEYİCİSİ ---
+# --- OTOMATİK MESAJ VE AKILLI ÇEVİRİ İŞLEYİCİSİ ---
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.effective_message
     if not message or not message.text: return
@@ -131,17 +135,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await message.reply_text("⚠️ Bir hata oluştu, lütfen tekrar deneyin.")
         return
 
-    # 2. OTOMATİK İNSANSI ÇEVİRİ
-    # Filtre: Çok kısa kelimeleri veya linkleri sorgusuz geç
+    # 2. OTOMATİK ÇEVİRİ (Kendi Dilini Hariç Tutan Sistem)
     words = text.split()
     if len(words) < 2 or len(text) < 5 or "http" in text:
         return
 
     try:
-        translated = await query_grok(text, NATIVE_TRANSLATE_PROMPT)
+        translated = await query_grok(text, STRICT_NATIVE_TRANSLATE_PROMPT)
         
-        # Filtre: AI mesajı saçma bulduysa, SKIP dediyse veya hata verdiyse sessiz kal
-        if "SKIP" in translated or "DESTEKLENMEYEN" in translated or len(translated) < 4:
+        # Filtre: Eğer AI SKIP dediyse, anlamsız yanıt verdiyse veya bir hata olduysa sus
+        if "SKIP" in translated or len(translated) < 4:
             return
             
         await message.reply_text(translated)
@@ -154,8 +157,8 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "🤖 **VİYANA AI — BOT MENÜSÜ**\n"
         "👑 *Yapımcı / Creator: Ehed*\n"
         "───────────────────────────────\n\n"
-        "🗣️ **OTOMATİK İNSANSI ÇEVİRİ AÇIK!**\n"
-        "• Yazılan mesajlar otomatik olarak konuşma diline tam uygun şekilde Türkçe, Rusça ve Almanca'ya çevrilir.\n\n"
+        "🗣️ **OTOMATİK ÇEVİRİ AÇIK!**\n"
+        "• Yazılan mesajlar tespit edilir ve yazılan dil hariç diğer 2 dile otomatik çevrilir.\n\n"
         "🎮 **EĞLENCE & OYUNLAR**\n"
         "• `/burc <burç_adı>` — Günlük burç yorumu\n"
         "• `/fal` — Günlük kahve falı\n"
@@ -310,7 +313,7 @@ def main():
     application.add_handler(CommandHandler("puan", cmd_siralama))
     application.add_handler(CommandHandler("siralama", cmd_siralama))
     
-    # Mesaj Dinleyici (Otomatik İnsansı Çeviri)
+    # Mesaj Dinleyici
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
     application.run_polling(drop_pending_updates=True, close_loop=False)
