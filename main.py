@@ -14,16 +14,15 @@ from telegram.ext import (
 
 # Tokenlar
 TELEGRAM_TOKEN = "8363449973:AAFWPie-yjpJn1vHQxSKeykVKjq2Pt3Lo1k"
-# Groq API Key
 XAI_API_KEY = "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"
 
-# Groq API Endpoint & Model (Güncel ve Stabil Model Yapıldı)
+# Groq API Endpoint & En Hızlı/Stabil Çalışan Model
 XAI_URL = "https://api.groq.com/openai/v1/chat/completions"
-GROK_MODEL = "llama3-70b-8192"
+GROK_MODEL = "llama-3.1-8b-instant"
 
 # Veri Depoları
 CHAT_MODES = {}
-TRANSLATION_SETTINGS = {}  # Varsayılan kapalı
+TRANSLATION_SETTINGS = {}  
 DISABLED_LANGUAGES = {}    
 USER_SCORES = {}           
 DAILY_KING = {}            
@@ -79,16 +78,14 @@ async def query_grok(prompt: str, system_prompt: str) -> str:
         ],
         "temperature": 0.7,
     }
-    async with httpx.AsyncClient(timeout=60.0) as client:
+    async with httpx.AsyncClient(timeout=30.0) as client:
         response = await client.post(XAI_URL, headers=headers, json=data)
         if response.status_code == 200:
             result = response.json()
             return result["choices"][0]["message"]["content"].strip()
-        elif response.status_code == 401:
-            raise Exception("UNAUTHORIZED")
-        elif response.status_code == 429:
-            raise Exception("LIMIT_EXCEEDED")
-        raise Exception(f"API Hatası: {response.status_code}")
+        else:
+            logger.error(f"Groq API Error Status: {response.status_code}, Body: {response.text}")
+            raise Exception(f"API_ERROR_{response.status_code}")
 
 def filter_disabled_languages(chat_id: int, text: str) -> str:
     disabled = DISABLED_LANGUAGES.get(chat_id, set())
@@ -179,12 +176,8 @@ async def cmd_burc(update: Update, context: ContextTypes.DEFAULT_TYPE):
         filtered_res = filter_disabled_languages(chat_id, res)
         await update.message.reply_text(f"⭐ **BURÇ YORUMU ({burc_adi.upper()}):**\n\n{filtered_res}")
     except Exception as e:
-        if str(e) == "UNAUTHORIZED":
-            await update.message.reply_text("🔑 API Key geçersiz!")
-        elif str(e) == "LIMIT_EXCEEDED":
-            await update.message.reply_text("⚠️ API Limiti doldu, lütfen 1 dakika sonra tekrar deneyin!")
-        else:
-            await update.message.reply_text("⚠️ Bir hata oluştu, lütfen tekrar deneyin.")
+        logger.error(f"Error in burc: {e}")
+        await update.message.reply_text("⚠️ Bir hata oluştu, lütfen tekrar deneyin.")
 
 async def cmd_joke(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
@@ -195,12 +188,8 @@ async def cmd_joke(update: Update, context: ContextTypes.DEFAULT_TYPE):
         filtered_res = filter_disabled_languages(chat_id, res)
         await update.message.reply_text(f"😂 {filtered_res}")
     except Exception as e:
-        if str(e) == "UNAUTHORIZED":
-            await update.message.reply_text("🔑 API Key geçersiz!")
-        elif str(e) == "LIMIT_EXCEEDED":
-            await update.message.reply_text("⚠️ API Limiti doldu, lütfen 1 dakika sonra tekrar deneyin!")
-        else:
-            await update.message.reply_text("⚠️ Bir hata oluştu, lütfen tekrar deneyin.")
+        logger.error(f"Error in joke: {e}")
+        await update.message.reply_text("⚠️ Bir hata oluştu, lütfen tekrar deneyin.")
 
 async def cmd_fal(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
@@ -212,12 +201,8 @@ async def cmd_fal(update: Update, context: ContextTypes.DEFAULT_TYPE):
         filtered_res = filter_disabled_languages(chat_id, res)
         await update.message.reply_text(f"🔮 **{user_name} Fal:**\n\n{filtered_res}")
     except Exception as e:
-        if str(e) == "UNAUTHORIZED":
-            await update.message.reply_text("🔑 API Key geçersiz!")
-        elif str(e) == "LIMIT_EXCEEDED":
-            await update.message.reply_text("⚠️ API Limiti doldu, lütfen 1 dakika sonra tekrar deneyin!")
-        else:
-            await update.message.reply_text("⚠️ Bir hata oluştu, lütfen tekrar deneyin.")
+        logger.error(f"Error in fal: {e}")
+        await update.message.reply_text("⚠️ Bir hata oluştu, lütfen tekrar deneyin.")
 
 async def cmd_sarcasm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
@@ -232,12 +217,8 @@ async def cmd_sarcasm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         filtered_res = filter_disabled_languages(chat_id, res)
         await update.message.reply_text(f"😏 {filtered_res}")
     except Exception as e:
-        if str(e) == "UNAUTHORIZED":
-            await update.message.reply_text("🔑 API Key geçersiz!")
-        elif str(e) == "LIMIT_EXCEEDED":
-            await update.message.reply_text("⚠️ API Limiti doldu, lütfen 1 dakika sonra tekrar deneyin!")
-        else:
-            await update.message.reply_text("⚠️ Bir hata oluştu, lütfen tekrar deneyin.")
+        logger.error(f"Error in sarcasm: {e}")
+        await update.message.reply_text("⚠️ Bir hata oluştu, lütfen tekrar deneyin.")
 
 async def cmd_kader(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
@@ -249,12 +230,8 @@ async def cmd_kader(update: Update, context: ContextTypes.DEFAULT_TYPE):
         filtered_res = filter_disabled_languages(chat_id, res)
         await update.message.reply_text(f"🎲 **Kader:**\n\n{filtered_res}")
     except Exception as e:
-        if str(e) == "UNAUTHORIZED":
-            await update.message.reply_text("🔑 API Key geçersiz!")
-        elif str(e) == "LIMIT_EXCEEDED":
-            await update.message.reply_text("⚠️ API Limiti doldu, lütfen 1 dakika sonra tekrar deneyin!")
-        else:
-            await update.message.reply_text("⚠️ Bir hata oluştu, lütfen tekrar deneyin.")
+        logger.error(f"Error in kader: {e}")
+        await update.message.reply_text("⚠️ Bir hata oluştu, lütfen tekrar deneyin.")
 
 async def cmd_kral(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
@@ -284,12 +261,8 @@ async def cmd_kurban(update: Update, context: ContextTypes.DEFAULT_TYPE):
         filtered_res = filter_disabled_languages(chat_id, res)
         await update.message.reply_text(f"🎯 **KURBAN:** {kurban['name']}\n\n{filtered_res}")
     except Exception as e:
-        if str(e) == "UNAUTHORIZED":
-            await update.message.reply_text("🔑 API Key geçersiz!")
-        elif str(e) == "LIMIT_EXCEEDED":
-            await update.message.reply_text("⚠️ API Limiti doldu, lütfen 1 dakika sonra tekrar deneyin!")
-        else:
-            await update.message.reply_text("⚠️ Bir hata oluştu, lütfen tekrar deneyin.")
+        logger.error(f"Error in kurban: {e}")
+        await update.message.reply_text("⚠️ Bir hata oluştu, lütfen tekrar deneyin.")
 
 async def cmd_dedikodu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
@@ -305,12 +278,8 @@ async def cmd_dedikodu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         filtered_res = filter_disabled_languages(chat_id, res)
         await update.message.reply_text(f"🚨 **DEDİKODU:**\n\n{filtered_res}")
     except Exception as e:
-        if str(e) == "UNAUTHORIZED":
-            await update.message.reply_text("🔑 API Key geçersiz!")
-        elif str(e) == "LIMIT_EXCEEDED":
-            await update.message.reply_text("⚠️ API Limiti doldu, lütfen 1 dakika sonra tekrar deneyin!")
-        else:
-            await update.message.reply_text("⚠️ Bir hata oluştu, lütfen tekrar deneyin.")
+        logger.error(f"Error in dedikodu: {e}")
+        await update.message.reply_text("⚠️ Bir hata oluştu, lütfen tekrar deneyin.")
 
 async def cmd_bilgi(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
@@ -321,12 +290,8 @@ async def cmd_bilgi(update: Update, context: ContextTypes.DEFAULT_TYPE):
         filtered_res = filter_disabled_languages(chat_id, res)
         await update.message.reply_text(f"🧠 **KİM BİLİR?**\n\n{filtered_res}")
     except Exception as e:
-        if str(e) == "UNAUTHORIZED":
-            await update.message.reply_text("🔑 API Key geçersiz!")
-        elif str(e) == "LIMIT_EXCEEDED":
-            await update.message.reply_text("⚠️ API Limiti doldu, lütfen 1 dakika sonra tekrar deneyin!")
-        else:
-            await update.message.reply_text("⚠️ Bir hata oluştu, lütfen tekrar deneyin.")
+        logger.error(f"Error in bilgi: {e}")
+        await update.message.reply_text("⚠️ Bir hata oluştu, lütfen tekrar deneyin.")
 
 async def cmd_siralama(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
@@ -396,6 +361,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     application = Application.builder().token(TELEGRAM_TOKEN).build()
+    
+    # Komut tanımlamaları
     application.add_handler(CommandHandler("help", cmd_help))
     application.add_handler(CommandHandler("burc", cmd_burc))
     application.add_handler(CommandHandler("fal", cmd_fal))
@@ -413,7 +380,9 @@ def main():
     application.add_handler(CommandHandler("rusca", toggle_rusca))
     application.add_handler(CommandHandler("turkce", toggle_turkce))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    application.run_polling(drop_pending_updates=True)
+    
+    # Render üzerinde çakışma yaşamamak için
+    application.run_polling(drop_pending_updates=True, close_loop=False)
 
 if __name__ == "__main__":
     main()
