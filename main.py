@@ -19,7 +19,8 @@ XAI_URL = "https://api.groq.com/openai/v1/chat/completions"
 GROK_MODEL = "llama-3.3-70b-versatile"
 
 CHAT_MODES = {}
-TRANSLATION_SETTINGS = {}  # Sohbet bazlı çeviri durumunu tutar (True / False)
+TRANSLATION_SETTINGS = {}  # Genel çeviri durumu (True / False)
+DISABLED_LANGUAGES = {}    # Grup bazlı kapatılan diller {chat_id: set("de", "ru", "tr", "en")}
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -38,6 +39,7 @@ Kullanıcı hangi dilde yazıyorsa SADECE o dilde cevap ver.
 Rusça → Rusça.
 Türkçe → Türkçe.
 Almanca → Almanca.
+İngilizce → İngilizce.
 Başka dile geçme ve kullanıcı istemedikçe çeviri yapma.
 Gereksiz giriş ve takip soruları kullanma.
 Doğrudan cevap ver.
@@ -52,43 +54,38 @@ Kullanıcı hangi dilde yazıyorsa SADECE o dilde cevap ver.
 Rusça → Rusça.
 Türkçe → Türkçe.
 Almanca → Almanca.
+İngilizce → İngilizce.
 Başka dile geçme ve kullanıcı istemedikçe çeviri yapma.
 Ciddi tehdit, şiddet teşviki veya nefret söylemi oluşturma.
 Doğrudan cevap ver.
 """
 
-# KUSURSUZ VE ANADİL SEVİYESİNDE ÇEVİRİ PROMPT'U
 TRANSLATION_PROMPT = """
 Sen hedef dillerin kültürüne, deyimlerine, argosuna ve günlük konuşma kalıplarına %100 hakim, anadili seviyesinde profesyonel bir uzmansın.
-SADECE Türkçe, Rusça ve Almanca dilleri arasında çeviri yap.
+SADECE Türkçe, Rusça, Almanca ve İngilizce dilleri arasında çeviri yap.
 
 GÖREVİN VE ÇEVİRİ FELSEFEN:
 - Asla mekanik veya doğrudan (birebir) sözlük çevirisi yapma.
 - Metnin duygu tonunu, samimiyetini, vurgusunu ve alt metnini tam olarak koru.
-- Çevirilerin sanki Moskova'da, Berlin'de veya İstanbul'da doğup büyümüş bir sokak/günlük hayat yerlisi tarafından yazılmış gibi tam anadil doğallığında olmalı (Native-like fluency).
+- Çevirilerin sanki Londra'da, Moskova'da, Berlin'de veya İstanbul'da doğup büyümüş bir sokak/günlük hayat yerlisi tarafından yazılmış gibi tam anadil doğallığında olmalı (Native-like fluency).
 - Metindeki argo, jargon, sokak dili veya kalıpları hedef dildeki EN BİREBİR KARŞILIĞI olan deyim ve ifadelerle değiştir.
 
-DİL EŞLEŞTİRMELERİ:
-Rusça metin gelirse → Türkçe ve Almanca'ya çevir.
-Türkçe metin gelirse → Rusça ve Almanca'ya çevir.
-Almanca metin gelirse → Türkçe ve Rusça'ya çevir.
+KURAL:
+Gelen metnin dilini tespit et ve onu DİĞER ÜÇ DİLE çevir.
+- Rusça ise → Türkçe, Almanca ve İngilizce'ye çevir.
+- Türkçe ise → Rusça, Almanca ve İngilizce'ye çevir.
+- Almanca ise → Türkçe, Rusça ve İngilizce'ye çevir.
+- İngilizce ise → Türkçe, Rusça ve Almanca'ya çevir.
 
 ÇIKTI FORMATI:
-Sadece ilgili iki çeviriyi göster. Giriş metni, açıklama veya "İşte çeviriniz" gibi ibareler ASLA ekleme.
+Sadece ilgili çevirileri göster. Giriş metni, açıklama veya "İşte çeviriniz" gibi ibareler ASLA ekleme.
 
 Örnek Format:
-Rusça: ...
-Almanca: ...
-
-(Veya metin Rusça ise):
 Türkçe: ...
 Almanca: ...
+İngilizce: ...
 
-(Veya metin Almanca ise):
-Türkçe: ...
-Rusça: ...
-
-Eğer metin bu üç dilden (Türkçe, Rusça, Almanca) biri değilse SADECE şu kelimeyi yaz:
+Eğer metin bu dört dilden (Türkçe, Rusça, Almanca, İngilizce) biri değilse SADECE şu kelimeyi yaz:
 DESTEKLENMEYEN_DIL
 """
 
@@ -105,7 +102,7 @@ async def query_grok(prompt: str, system_prompt: str) -> str:
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt},
         ],
-        "temperature": 0.5, # Doğallığı korurken tutarlı anadil çevirisi için ideal sıcaklık
+        "temperature": 0.5,
     }
 
     async with httpx.AsyncClient(timeout=90.0) as client:
@@ -146,6 +143,31 @@ async def send_long_message(message, text: str):
 
     for start in range(0, len(text), 4000):
         await message.reply_text(text[start : start + 4000])
+
+
+def filter_disabled_languages(chat_id: int, translation_text: str) -> str:
+    """Kapatılmış dilleri çeviri sonucundan temizler."""
+    disabled = DISABLED_LANGUAGES.get(chat_id, set())
+    if not disabled:
+        return translation_text
+
+    lines = translation_text.split("\n")
+    filtered_lines = []
+    
+    for line in lines:
+        lower_line = line.lower()
+        if "almanca:" in lower_line and "de" in disabled:
+            continue
+        if "rusça:" in lower_line and "ru" in disabled:
+            continue
+        if "türkçe:" in lower_line and "tr" in disabled:
+            continue
+        if "ingilizce:" in lower_line and "en" in disabled:
+            continue
+        filtered_lines.append(line)
+
+    result = "\n".join(filtered_lines).strip()
+    return result
 
 
 def bot_mentioned(message, bot_username: str) -> bool:
@@ -198,7 +220,7 @@ async def handle_ai(message, text: str, mode: str):
         await message.reply_text(f"⚠️ AI Hatası:\n{e}")
 
 
-async def handle_translation(message, text: str):
+async def handle_translation(message, text: str, chat_id: int):
     try:
         await message.chat.send_action(action="typing")
         result = await query_grok(text, TRANSLATION_PROMPT)
@@ -206,13 +228,17 @@ async def handle_translation(message, text: str):
         if result.strip() == "DESTEKLENMEYEN_DIL":
             return
 
-        await send_long_message(message, result)
+        # Kapatılan dilleri temizle
+        final_result = filter_disabled_languages(chat_id, result)
+
+        if final_result:
+            await send_long_message(message, final_result)
     except Exception as e:
         logger.error("Çeviri hatası: %s", e)
         await message.reply_text(f"⚠️ Çeviri Hatası:\n{e}")
 
 
-# Otomatik çeviriyi açma/kapatma komutu
+# Otomatik çeviriyi komple açma/kapatma komutu
 async def toggle_translation(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     current_status = TRANSLATION_SETTINGS.get(chat_id, True)
@@ -223,6 +249,33 @@ async def toggle_translation(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.effective_message.reply_text("🌐 Otomatik çeviri **AÇILDI**.")
     else:
         await update.effective_message.reply_text("🚫 Otomatik çeviri **KAPATILDI**.")
+
+
+# Özel Dil Kapatma/Açma Fonksiyonu
+async def toggle_language(update: Update, context: ContextTypes.DEFAULT_TYPE, lang_code: str, lang_name: str):
+    chat_id = update.effective_chat.id
+    if chat_id not in DISABLED_LANGUAGES:
+        DISABLED_LANGUAGES[chat_id] = set()
+
+    if lang_code in DISABLED_LANGUAGES[chat_id]:
+        DISABLED_LANGUAGES[chat_id].remove(lang_code)
+        await update.effective_message.reply_text(f"✅ {lang_name} çevirisi bu grupta **AÇILDI**.")
+    else:
+        DISABLED_LANGUAGES[chat_id].add(lang_code)
+        await update.effective_message.reply_text(f"❌ {lang_name} çevirisi bu grupta **KAPATILDI**.")
+
+
+async def toggle_almanca(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await toggle_language(update, context, "de", "Almanca")
+
+async def toggle_rusca(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await toggle_language(update, context, "ru", "Rusça")
+
+async def toggle_turkce(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await toggle_language(update, context, "tr", "Türkçe")
+
+async def toggle_ingilizce(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await toggle_language(update, context, "en", "İngilizce")
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -258,7 +311,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Otomatik Çeviri Kontrolü (Varsayılan Açık)
     if TRANSLATION_SETTINGS.get(chat_id, True):
-        await handle_translation(message, text)
+        await handle_translation(message, text, chat_id)
 
 
 async def error_handler(update, context: ContextTypes.DEFAULT_TYPE):
@@ -268,8 +321,12 @@ async def error_handler(update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     application = Application.builder().token(TELEGRAM_TOKEN).build()
 
-    # /ceviri komut işleyicisi
+    # Komut işleyicileri
     application.add_handler(CommandHandler("ceviri", toggle_translation))
+    application.add_handler(CommandHandler("almanca", toggle_almanca))
+    application.add_handler(CommandHandler("rusca", toggle_rusca))
+    application.add_handler(CommandHandler("turkce", toggle_turkce))
+    application.add_handler(CommandHandler("ingilizce", toggle_ingilizce))
 
     application.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)
