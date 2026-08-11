@@ -11,8 +11,8 @@ from telegram.ext import (
     filters,
 )
 
-# --- TOKENLAR ---
-TELEGRAM_TOKEN = "8363449973:AAFWPie-yjpJn1vHQxSKeykVKjq2Pt3Lo1k"
+# --- YENİ TOKEN VE API KEY ---
+TELEGRAM_TOKEN = "8363449973:AAEel1P8fp1b3eRhnbpDNM4Z6vdEbFQR8h0"
 XAI_API_KEY = "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"
 
 XAI_URL = "https://api.groq.com/openai/v1/chat/completions"
@@ -253,5 +253,5 @@ if __name__ == "__main__":
     # Mesaj Dinleyici
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    print("Viyana AI (Mükemmel Filtreli & Kusursuz Çeviri) Başlatıldı...")
+    print("Viyana AI Yeni Token İle Yayında...")
     app.run_polling(drop_pending_updates=True, poll_interval=1.0)
