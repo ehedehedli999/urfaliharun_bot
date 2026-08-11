@@ -101,9 +101,10 @@ async def query_grok(prompt: str, system_prompt: str, json_mode: bool = False) -
             "temperature": 0.1,
             "max_completion_tokens": 300
         }
-        if json_mode:
-            # Cerebras'ın OpenAI uyumlu JSON modu: model artık saf JSON dışına çıkamaz
-            data["response_format"] = {"type": "json_object"}
+        
+        # NOT: response_format parametresi Cerebras API ile HTTP 400 hatası yarattığı için kaldırıldı.
+        # Regex ile JSON ayıklama mekanizması zaten kodda güvenli şekilde çalışmaktadır.
+
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.post(CEREBRAS_URL, headers=headers, json=data)
             if response.status_code == 200:
@@ -112,9 +113,7 @@ async def query_grok(prompt: str, system_prompt: str, json_mode: bool = False) -
             if response.status_code == 429:
                 logger.error("Cerebras API kota/rate-limit doldu (429)")
                 raise RateLimitError("Cerebras API kota doldu")
-            # 200/429 dışındaki her durumda (401 geçersiz key, 400 hatalı istek, 500 vb.)
-            # Render loglarında tam olarak neyin yanlış gittiğini görebilmek için
-            # HTTP kodu + Cerebras'ın döndürdüğü hata mesajını eksiksiz yazdır.
+            
             logger.error(f"Cerebras API hatası - HTTP {response.status_code}: {response.text}")
             raise TranslationServiceError(f"HTTP {response.status_code}: {response.text}")
     except (RateLimitError, TranslationServiceError):
@@ -147,10 +146,6 @@ REQUIRED_TARGETS = {
 SINGLE_LANG_NAMES = {"tr": "Turkish", "ru": "Russian", "de": "German"}
 
 async def get_single_translation(clean_text: str, target: str) -> str:
-    """
-    JSON modu başarısız olursa devreye giren yedek yöntem.
-    Tek bir dil için sade metin ister - modelin format bozma ihtimali çok daha düşük.
-    """
     system_prompt = (
         f"You are a professional native-level translator. Translate the given short chat "
         f"message into natural, idiomatic {SINGLE_LANG_NAMES[target]}, the way a native "
@@ -161,13 +156,6 @@ async def get_single_translation(clean_text: str, target: str) -> str:
     return raw.strip().strip('"') if raw else ""
 
 async def get_translation(clean_text: str, src_lang: str, max_retries: int = 2) -> dict:
-    """
-    Kaynak dile göre gereken TÜM hedef dilleri JSON olarak ister.
-    Bir dil eksik/boş gelirse (model saçmalarsa) otomatik tekrar dener.
-    Eksiksiz sonuç gelene kadar (ya da deneme hakkı bitene kadar) devam eder.
-    JSON denemeleri tamamen başarısız olursa, dilleri tek tek çevirerek yedek devreye girer
-    (kısa/argo mesajlarda model JSON formatını bozabiliyor, bu tamamen sessiz kalmayı önler).
-    """
     targets = REQUIRED_TARGETS.get(src_lang, [])
     if not targets:
         return {}
@@ -190,11 +178,9 @@ async def get_translation(clean_text: str, src_lang: str, max_retries: int = 2) 
         except json.JSONDecodeError:
             continue
 
-        # Gerekli TÜM diller dolu geldi mi kontrol et; biri bile eksikse tekrar dene
         if all(str(data.get(t, "")).strip() for t in targets):
             return {t: str(data[t]).strip() for t in targets}
 
-    # JSON yöntemi tüm denemelerde başarısız oldu -> yedek yönteme geç (dilleri tek tek çevir)
     logger.warning(f"JSON çeviri başarısız, yedek yönteme geçiliyor: '{clean_text}'")
     result = {}
     for t in targets:
@@ -213,7 +199,6 @@ def add_point(chat_id: int, user):
     USER_SCORES[chat_id][uid]["messages"] += 1
     USER_SCORES[chat_id][uid]["name"] = user.first_name
 
-# --- DİL AÇMA / KAPATMA KOMUTLARI ---
 async def cmd_toggle_lang(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text: return
     cmd = update.message.text.split()[0].replace("/", "").split("@")[0].lower()
@@ -235,7 +220,6 @@ async def cmd_toggle_lang(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     await update.message.reply_text(msg)
 
-# --- EĞLENCE KOMUTLARI ---
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         p = "Hakkımda metni yaz: Ben Viyana Ai Yapay zeka botuyum. Ehed tarafından tasarlandım."
@@ -274,7 +258,6 @@ async def cmd_siralama(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text += f"{idx}. **{u['name']}** — {u['points']} Pts\n"
     await update.message.reply_text(text, parse_mode="Markdown")
 
-# --- MESAJ İŞLEYİCİ ---
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         message = update.effective_message
@@ -299,7 +282,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         valid_lines = []
         for target in REQUIRED_TARGETS.get(src_lang, []):
             if not LANG_STATUS.get(target, True):
-                continue  # Bu dil komutla kapatılmış
+                continue
             text_t = translations.get(target)
             if text_t:
                 valid_lines.append(f"{LANG_FLAGS[target]} {text_t}")
@@ -351,4 +334,3 @@ if __name__ == "__main__":
     
     print("Viyana AI Güncellenmiş Kod İle Yayında...")
     app.run_polling(drop_pending_updates=True)
-
