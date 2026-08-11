@@ -2,6 +2,7 @@ import logging
 import random
 import re
 import json
+import time
 import httpx
 from telegram import Update
 from telegram.ext import (
@@ -14,10 +15,10 @@ from telegram.ext import (
 
 # --- TOKENLAR ---
 TELEGRAM_TOKEN = "8363449973:AAEel1P8fp1b3eRhnbpDNM4Z6vdEbFQR8h0"
-XAI_API_KEY = "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"
+CEREBRAS_API_KEY = "csk-2nr3xkmt8x9eyfkc9hhc2nyrwf5nrx8kdt4pn8hwdjvewfxv"
 
-XAI_URL = "https://api.groq.com/openai/v1/chat/completions"
-GROK_MODEL = "llama-3.3-70b-versatile"
+CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions"
+CEREBRAS_MODEL = "llama-3.3-70b"
 
 USER_SCORES = {}
 LANG_STATUS = {
@@ -25,6 +26,10 @@ LANG_STATUS = {
     "ru": True,
     "de": True
 }
+
+# Kota (429) uyarısını gruba spam gibi göndermemek için son bildirim zamanı takibi
+LAST_RATE_LIMIT_NOTICE = 0
+RATE_LIMIT_NOTICE_COOLDOWN = 300  # saniye (5 dakika)
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -69,30 +74,39 @@ Sana verilen metni veya görevi 3 dilde (Türkçe, Rusça, Almanca) yanıtla.
 🇩🇪 [Almanca İfade]
 """
 
+class RateLimitError(Exception):
+    """Cerebras API kota/rate-limit (429) doldu."""
+    pass
+
 async def query_grok(prompt: str, system_prompt: str, json_mode: bool = False) -> str:
     try:
         headers = {
-            "Authorization": f"Bearer {XAI_API_KEY.strip()}",
+            "Authorization": f"Bearer {CEREBRAS_API_KEY.strip()}",
             "Content-Type": "application/json",
         }
         data = {
-            "model": GROK_MODEL,
+            "model": CEREBRAS_MODEL,
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt},
             ],
             "temperature": 0.1,
-            "max_tokens": 300
+            "max_completion_tokens": 300
         }
         if json_mode:
-            # Groq'un OpenAI uyumlu JSON modu: model artık saf JSON dışına çıkamaz
+            # Cerebras'ın OpenAI uyumlu JSON modu: model artık saf JSON dışına çıkamaz
             data["response_format"] = {"type": "json_object"}
         async with httpx.AsyncClient(timeout=15.0) as client:
-            response = await client.post(XAI_URL, headers=headers, json=data)
+            response = await client.post(CEREBRAS_URL, headers=headers, json=data)
             if response.status_code == 200:
                 result = response.json()
                 return result["choices"][0]["message"]["content"].strip()
+            if response.status_code == 429:
+                logger.error("Cerebras API kota/rate-limit doldu (429)")
+                raise RateLimitError("Cerebras API kota doldu")
             return ""
+    except RateLimitError:
+        raise
     except Exception as e:
         logger.error(f"API Error: {e}")
         return ""
@@ -112,11 +126,29 @@ REQUIRED_TARGETS = {
     "de": ["tr", "ru"],
 }
 
+SINGLE_LANG_NAMES = {"tr": "Turkish", "ru": "Russian", "de": "German"}
+
+async def get_single_translation(clean_text: str, target: str) -> str:
+    """
+    JSON modu başarısız olursa devreye giren yedek yöntem.
+    Tek bir dil için sade metin ister - modelin format bozma ihtimali çok daha düşük.
+    """
+    system_prompt = (
+        f"You are a professional native-level translator. Translate the given short chat "
+        f"message into natural, idiomatic {SINGLE_LANG_NAMES[target]}, the way a native "
+        f"speaker would say it in a casual conversation. Respond with ONLY the translation "
+        f"text - no quotes, no explanation, no extra text."
+    )
+    raw = await query_grok(f'Translate this message: "{clean_text}"', system_prompt)
+    return raw.strip().strip('"') if raw else ""
+
 async def get_translation(clean_text: str, src_lang: str, max_retries: int = 2) -> dict:
     """
     Kaynak dile göre gereken TÜM hedef dilleri JSON olarak ister.
     Bir dil eksik/boş gelirse (model saçmalarsa) otomatik tekrar dener.
     Eksiksiz sonuç gelene kadar (ya da deneme hakkı bitene kadar) devam eder.
+    JSON denemeleri tamamen başarısız olursa, dilleri tek tek çevirerek yedek devreye girer
+    (kısa/argo mesajlarda model JSON formatını bozabiliyor, bu tamamen sessiz kalmayı önler).
     """
     targets = REQUIRED_TARGETS.get(src_lang, [])
     if not targets:
@@ -144,7 +176,14 @@ async def get_translation(clean_text: str, src_lang: str, max_retries: int = 2) 
         if all(str(data.get(t, "")).strip() for t in targets):
             return {t: str(data[t]).strip() for t in targets}
 
-    return {}
+    # JSON yöntemi tüm denemelerde başarısız oldu -> yedek yönteme geç (dilleri tek tek çevir)
+    logger.warning(f"JSON çeviri başarısız, yedek yönteme geçiliyor: '{clean_text}'")
+    result = {}
+    for t in targets:
+        translated = await get_single_translation(clean_text, t)
+        if translated:
+            result[t] = translated
+    return result
 
 def add_point(chat_id: int, user):
     if user.is_bot: return
@@ -241,6 +280,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if valid_lines:
             final_output = "\n".join(valid_lines)
             await message.reply_text(final_output)
+
+    except RateLimitError:
+        global LAST_RATE_LIMIT_NOTICE
+        now = time.time()
+        if now - LAST_RATE_LIMIT_NOTICE > RATE_LIMIT_NOTICE_COOLDOWN:
+            LAST_RATE_LIMIT_NOTICE = now
+            try:
+                await update.effective_message.reply_text(
+                    "⚠️ Çeviri servisi şu anda günlük/dakikalık kota limitine ulaştı. "
+                    "Kota yenilenene kadar çeviriler geçici olarak çalışmayabilir."
+                )
+            except Exception as notify_err:
+                logger.error(f"Kota bildirimi gönderilemedi: {notify_err}")
 
     except Exception as e:
         logger.error(f"Handle error: {e}")
