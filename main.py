@@ -1,6 +1,7 @@
 import logging
 import random
 import re
+import json
 import httpx
 from telegram import Update
 from telegram.ext import (
@@ -31,29 +32,33 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# --- TAM VE KESİNLİKLE EKSİKSİZ ÇEVİRİ PROMPTU ---
+# --- TAM VE KESİNLİKLE EKSİKSİZ ÇEVİRİ PROMPTU (JSON ZORUNLU) ---
 SYSTEM_TRANSLATE_PROMPT = """
-You are an uncompromising translation engine. 
-Your task is to translate short chat messages into target languages.
+You are a professional native-level translator for a multilingual Telegram community chat (Turkish, Russian, German speakers).
 
-STRICT MANDATORY RULES:
-1. You MUST ALWAYS output EXACTLY TWO lines of translations (unless one language is disabled by system).
-2. NEVER skip German or Russian, even if the input text is very short (e.g., "Tmm", "Gelir gülüm").
-3. NEVER truncate sentences or leave lines missing.
-4. Output ONLY lines starting with flag emojis. No explanations.
+Translate the given short chat message the way a real native speaker would translate it in a casual conversation:
+- Natural, idiomatic, and contextually correct.
+- NOT a robotic word-for-word translation.
+- NEVER invent, add, or drop meaning that isn't in the original message.
+- Preserve tone (greeting, joke, slang, question, etc.) exactly as a native speaker would.
 
-OUTPUT FORMAT REQUIREMENTS:
-If input language is Turkish / Azerbaijani:
-🇷🇺 [Russian Translation]
-🇩🇪 [German Translation]
+You MUST respond with STRICT JSON ONLY. No explanations, no markdown, no code fences, no extra text before or after the JSON.
 
-If input language is Russian:
-🇹🇷 [Turkish Translation]
-🇩🇪 [German Translation]
+Depending on the detected source language of the input, return exactly these keys:
 
-If input language is German:
-🇹🇷 [Turkish Translation]
-🇷🇺 [Russian Translation]
+If input is Turkish or Azerbaijani:
+{"ru": "<Russian translation>", "de": "<German translation>"}
+
+If input is Russian:
+{"tr": "<Turkish translation>", "de": "<German translation>"}
+
+If input is German:
+{"tr": "<Turkish translation>", "ru": "<Russian translation>"}
+
+MANDATORY RULES:
+1. ALWAYS include BOTH required keys, even for very short messages like "Tmm", "Ok", "Selam", "Привет".
+2. NEVER leave a value empty and NEVER omit a key.
+3. Output ONLY the raw JSON object.
 """
 
 COMMAND_3LANG_PROMPT = """
@@ -64,7 +69,7 @@ Sana verilen metni veya görevi 3 dilde (Türkçe, Rusça, Almanca) yanıtla.
 🇩🇪 [Almanca İfade]
 """
 
-async def query_grok(prompt: str, system_prompt: str) -> str:
+async def query_grok(prompt: str, system_prompt: str, json_mode: bool = False) -> str:
     try:
         headers = {
             "Authorization": f"Bearer {XAI_API_KEY.strip()}",
@@ -79,6 +84,9 @@ async def query_grok(prompt: str, system_prompt: str) -> str:
             "temperature": 0.1,
             "max_tokens": 300
         }
+        if json_mode:
+            # Groq'un OpenAI uyumlu JSON modu: model artık saf JSON dışına çıkamaz
+            data["response_format"] = {"type": "json_object"}
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.post(XAI_URL, headers=headers, json=data)
             if response.status_code == 200:
@@ -96,6 +104,47 @@ def detect_language(text: str) -> str:
         return "de"
     else:
         return "tr"
+
+LANG_FLAGS = {"tr": "🇹🇷", "ru": "🇷🇺", "de": "🇩🇪"}
+REQUIRED_TARGETS = {
+    "tr": ["ru", "de"],
+    "ru": ["tr", "de"],
+    "de": ["tr", "ru"],
+}
+
+async def get_translation(clean_text: str, src_lang: str, max_retries: int = 2) -> dict:
+    """
+    Kaynak dile göre gereken TÜM hedef dilleri JSON olarak ister.
+    Bir dil eksik/boş gelirse (model saçmalarsa) otomatik tekrar dener.
+    Eksiksiz sonuç gelene kadar (ya da deneme hakkı bitene kadar) devam eder.
+    """
+    targets = REQUIRED_TARGETS.get(src_lang, [])
+    if not targets:
+        return {}
+
+    for _ in range(max_retries + 1):
+        raw = await query_grok(
+            f'Translate this chat message: "{clean_text}"',
+            SYSTEM_TRANSLATE_PROMPT,
+            json_mode=True,
+        )
+        if not raw:
+            continue
+
+        match = re.search(r"\{.*\}", raw, re.DOTALL)
+        if not match:
+            continue
+
+        try:
+            data = json.loads(match.group(0))
+        except json.JSONDecodeError:
+            continue
+
+        # Gerekli TÜM diller dolu geldi mi kontrol et; biri bile eksikse tekrar dene
+        if all(str(data.get(t, "")).strip() for t in targets):
+            return {t: str(data[t]).strip() for t in targets}
+
+    return {}
 
 def add_point(chat_id: int, user):
     if user.is_bot: return
@@ -177,29 +226,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(words) < 1 or "http" in text: return
 
         src_lang = detect_language(clean_text)
-        raw_translation = await query_grok(f"Translate: \"{clean_text}\"", SYSTEM_TRANSLATE_PROMPT)
+        translations = await get_translation(clean_text, src_lang)
 
-        if not raw_translation: return
+        if not translations: return
 
-        lines = raw_translation.split("\n")
         valid_lines = []
-
-        for line in lines:
-            line_clean = line.strip()
-            if not line_clean: continue
-
-            # 1. Kaynak dili filtrele
-            if src_lang == "tr" and line_clean.startswith("🇹🇷"): continue
-            if src_lang == "ru" and line_clean.startswith("🇷🇺"): continue
-            if src_lang == "de" and line_clean.startswith("🇩🇪"): continue
-
-            # 2. Kapalı dili filtrele
-            if not LANG_STATUS["tr"] and line_clean.startswith("🇹🇷"): continue
-            if not LANG_STATUS["ru"] and line_clean.startswith("🇷🇺"): continue
-            if not LANG_STATUS["de"] and line_clean.startswith("🇩🇪"): continue
-
-            if any(line_clean.startswith(flag) for flag in ["🇹🇷", "🇷🇺", "🇩🇪"]):
-                valid_lines.append(line_clean)
+        for target in REQUIRED_TARGETS.get(src_lang, []):
+            if not LANG_STATUS.get(target, True):
+                continue  # Bu dil komutla kapatılmış
+            text_t = translations.get(target)
+            if text_t:
+                valid_lines.append(f"{LANG_FLAGS[target]} {text_t}")
 
         if valid_lines:
             final_output = "\n".join(valid_lines)
