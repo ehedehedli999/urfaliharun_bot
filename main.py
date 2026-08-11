@@ -16,7 +16,8 @@ TELEGRAM_TOKEN = "8363449973:AAElwMlaNrlKJ7sh8PApYPxWb13YqrHJakU"
 CEREBRAS_API_KEY = "csk-2nr3xkmt8x9eyfkc9hhc2nyrwf5nrx8kdt4pn8hwdjvewfxv"
 
 CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions"
-CEREBRAS_MODEL = "llama3.1-70b"
+# MODEL ADI CEREBRAS API DOKÜMANLARINA GÖRE DÜZELTİLDİ:
+CEREBRAS_MODEL = "llama-3.3-70b"
 
 USER_SCORES = {}
 LANG_STATUS = {"tr": True, "ru": True, "de": True}
@@ -214,3 +215,4 @@ if __name__ == "__main__":
     
     print("Viyana AI Güncellenmiş Kod İle Yayında...")
     app.run_polling(drop_pending_updates=True)
+
