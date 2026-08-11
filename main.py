@@ -1,6 +1,5 @@
 import logging
 import random
-from datetime import datetime, timedelta
 import httpx
 from telegram import Update
 from telegram.ext import (
@@ -11,7 +10,7 @@ from telegram.ext import (
     filters,
 )
 
-# --- AYARLAR VE TOKENLAR ---
+# --- TOKENLAR ---
 TELEGRAM_TOKEN = "8363449973:AAFWPie-yjpJn1vHQxSKeykVKjq2Pt3Lo1k"
 XAI_API_KEY = "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"
 
@@ -19,7 +18,6 @@ XAI_URL = "https://api.groq.com/openai/v1/chat/completions"
 GROK_MODEL = "llama-3.1-8b-instant"
 
 USER_SCORES = {}           
-DAILY_KING = {}            
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -27,32 +25,49 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# BOT ETİKETLENDİĞİNDE YANIT PROMPT'U
 SMART_PROMPT = """
 Sen Viyana AI Bot'usun. Yapımcın Ehed'dir.
-Kullanıcının sorusuna veya mesajına SADECE aşağıdaki 3 dilde ayrı ayrı yanıt ver:
-
-Türkçe: [Yanıtın]
-Rusça: [Yanıtın]
-Almanca: [Yanıtın]
+Kullanıcı seninle konuştuğunda kısa, akıcı ve doğal cevap ver.
+Cevabını 3 dilde bayraklarla yaz:
+🇹🇷 [Türkçe Cevabın]
+🇷🇺 [Rusça Cevabın]
+🇩🇪 [Almanca Cevabın]
 """
 
+# MÜKEMMEL, BAYRAKLI VE ÜST DÜZEY ÇEVİRİ PROMPT'U
 TRANSLATION_SYSTEM_PROMPT = """
-Sen profesyonel ve insan gibi doğal çeviri yapan bir yapay zekasın.
-Görevin sana verilen metni analiz etmek ve şu kurallara %100 uymaktır:
+Sen ana dili düzeyinde Türkçe, Rusça ve Almanca bilen profesyonel bir mütercim-tercümansın.
+Görevin kelimesi kelimesine çeviri yapmak DEĞİL; cümlenin anlamını, duygusunu ve konuşma diline uygunluğunu en üst düzey kalitede aktarmaktır.
 
-1. Metnin yazıldığı dili tespit et (Türkçe, Rusça veya Almanca).
-2. Metni, YAZILDIĞI DİL HARİÇ diğer 2 dile çevir.
-   - Eğer Türkçe yazıldıysa ➔ SADECE Rusça ve Almanca çevir.
-   - Eğer Rusça yazıldıysa ➔ SADECE Türkçe ve Almanca çevir.
-   - Eğer Almanca yazıldıysa ➔ SADECE Türkçe ve Rusça çevir.
-3. KESİNLİKLE metnin yazıldığı kendi dilini cevaba ekleme!
-4. Rusça çevirileri KESİNLİKLE gerçek Kiril alfabesiyle yaz (Latin okunuşu yazma).
-5. KESİNLİKLE [...] veya (...) gibi parantezler, köşeli parantezler kullanma.
-6. "Dil 1", "Çeviri" gibi ekstra kelimeler yazma. Direct başlık at.
+Sana verilen mesajın dilini tespit et ve ŞU KESİN KURALLARA UY:
 
-Format örneği (Türkçe yazılmış bir mesaj için):
-Rusça: [Buraya gerçek Kiril Rusça]
-Almanca: [Buraya Almanca]
+1. Mesaj TÜRKÇE ise:
+   - KESİNLİKLE Türkçe çeviri veya yanıt verme!
+   - KESİNLİKLE "Rusça:", "Almanca:" gibi kelimeler/başlıklar YAZMA!
+   - SADECE bayrak koyarak en üst düzey çevirileri alt alta yaz.
+   Format:
+   🇷🇺 [En doğal Rusça çeviri - Gerçek Kiril Alfabesiyle]
+   🇩🇪 [En doğal Almanca çeviri]
+
+2. Mesaj ALMANCA ise:
+   - KESİNLİKLE Almanca çeviri veya yanıt verme!
+   - KESİNLİKLE "Türkçe:", "Rusça:" gibi kelimeler/başlıklar YAZMA!
+   - Format:
+   🇹🇷 [En doğal Türkçe çeviri]
+   🇷🇺 [En doğal Rusça çeviri - Gerçek Kiril Alfabesiyle]
+
+3. Mesaj RUSÇA ise:
+   - KESİNLİKLE Rusça çeviri veya yanıt verme!
+   - KESİNLİKLE "Türkçe:", "Almanca:" gibi kelimeler/başlıklar YAZMA!
+   - Format:
+   🇹🇷 [En doğal Türkçe çeviri]
+   🇩🇪 [En doğal Almanca çeviri]
+
+YASAKLAR:
+- "Türkçe:", "Rusça:", "Almanca:", "Dil:", "Çeviri:" gibi kelimeleri ASLA KULLANMA. SADECE BAYRAK EMOJİSİ KULLAN.
+- Parantez [...] veya (...) yazma.
+- Rusça için asla okunuş/Latin harfi yazma, tamamen Kiril yaz.
 """
 
 async def query_grok(prompt: str, system_prompt: str) -> str:
@@ -66,7 +81,7 @@ async def query_grok(prompt: str, system_prompt: str) -> str:
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt},
         ],
-        "temperature": 0.2,
+        "temperature": 0.1,
     }
     async with httpx.AsyncClient(timeout=30.0) as client:
         response = await client.post(XAI_URL, headers=headers, json=data)
@@ -87,15 +102,7 @@ def add_point(chat_id: int, user):
     USER_SCORES[chat_id][uid]["messages"] += 1
     USER_SCORES[chat_id][uid]["name"] = user.first_name
 
-def get_level(points: int) -> str:
-    if points < 100: return "🥉 Çaylak"
-    if points < 500: return "🥈 Bronz"
-    if points < 1500: return "🥇 Gümüş"
-    if points < 3000: return "💎 Altın"
-    if points < 7000: return "👑 Viyana Savaşçısı"
-    return "🔥 Viyana Efsanesi"
-
-# --- OTOMATİK ÇEVİRİ ---
+# --- MESAJ İŞLEME VE BAYRAKLI ÇEVİRİ ---
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         message = update.effective_message
@@ -119,9 +126,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await message.reply_text(ans)
             return
 
-        # Çok kısa kelimeler ve linkler filtrelenir
+        # Çok kısa mesajlar veya linkler filtrelenir
         words = text.split()
-        if len(words) < 2 or len(text) < 5 or "http" in text:
+        if len(words) < 2 or len(text) < 4 or "http" in text:
             return
 
         translated = await query_grok(text, TRANSLATION_SYSTEM_PROMPT)
@@ -133,7 +140,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- KOMUTLAR ---
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = "🤖 **VİYANA AI**\n👑 *Creator: Ehed*\n\nBot aktif ve çalışıyor!"
+    text = "🤖 **VİYANA AI**\n👑 *Creator: Ehed*\n\nBayraklı profesyonel çeviri modu aktif!"
     await update.message.reply_text(text, parse_mode="Markdown")
 
 async def cmd_siralama(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -145,11 +152,9 @@ async def cmd_siralama(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sorted_users = sorted(scores.values(), key=lambda x: x["points"], reverse=True)[:10]
     text = "🏆 **PUAN SIRALAMASI** 🏆\n\n"
     for idx, u in enumerate(sorted_users, 1):
-        lvl = get_level(u["points"])
-        text += f"{idx}. **{u['name']}** — {u['points']} Puan ({lvl})\n"
+        text += f"{idx}. **{u['name']}** — {u['points']} Puan\n"
     await update.message.reply_text(text, parse_mode="Markdown")
 
-# --- ÇÖKMEYEN BAŞLATMA YAPISI ---
 if __name__ == "__main__":
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
@@ -158,5 +163,5 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("siralama", cmd_siralama))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    print("Bot başlatılıyor...")
+    print("Viyana AI Bot Başlatıldı...")
     app.run_polling(drop_pending_updates=True)
