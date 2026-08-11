@@ -2,7 +2,6 @@ import logging
 import random
 import re
 import json
-import time
 import httpx
 from telegram import Update
 from telegram.ext import (
@@ -13,7 +12,8 @@ from telegram.ext import (
     ContextTypes,
 )
 
-TELEGRAM_TOKEN = "8363449973:AAHQ4HBe6U40Ig1J0N2KA773v_F8btY6SfI"
+# Yeni Telegram ve Cerebras Tokenlerin eklendi
+TELEGRAM_TOKEN = "8363449973:AAElwMlaNrlKJ7sh8PApYPxWb13YqrHJakU"
 CEREBRAS_API_KEY = "csk-2nr3xkmt8x9eyfkc9hhc2nyrwf5nrx8kdt4pn8hwdjvewfxv"
 
 CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions"
@@ -51,7 +51,7 @@ If input is German:
 {"tr": "<Turkish translation>", "ru": "<Russian translation>"}
 
 MANDATORY RULES:
-1. ALWAYS include BOTH required keys, even for very short messages like "Tmm", "Ok", "Selam", "Привет".
+1. ALWAYS include BOTH required keys.
 2. NEVER leave a value empty and NEVER omit a key.
 3. Output ONLY the raw JSON object.
 """
