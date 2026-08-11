@@ -14,7 +14,7 @@ from telegram.ext import (
 )
 
 # --- TOKENLAR ---
-TELEGRAM_TOKEN = "8363449973:AAEel1P8fp1b3eRhnbpDNM4Z6vdEbFQR8h0"
+TELEGRAM_TOKEN = "8363449973:AAHQ4HBe6U40Ig1J0N2KA773v_F8btY6SfI"
 CEREBRAS_API_KEY = "csk-2nr3xkmt8x9eyfkc9hhc2nyrwf5nrx8kdt4pn8hwdjvewfxv"
 
 CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions"
