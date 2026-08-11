@@ -94,7 +94,7 @@ async def query_grok(prompt: str, system_prompt: str, json_mode: bool = False) -
                 {"role": "user", "content": prompt},
             ],
             "temperature": 0.1,
-            "max_completion_tokens": 300
+            "max_tokens": 300  # DÜZELTİLDİ: max_completion_tokens yerine max_tokens kullanıldı
         }
 
         async with httpx.AsyncClient(timeout=15.0) as client:
