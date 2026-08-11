@@ -31,6 +31,10 @@ LANG_STATUS = {
 LAST_RATE_LIMIT_NOTICE = 0
 RATE_LIMIT_NOTICE_COOLDOWN = 300  # saniye (5 dakika)
 
+# Genel API hatası (401/400/500 vb.) bildirimi için aynı mantıkta ayrı bir zamanlayıcı
+LAST_SERVICE_ERROR_NOTICE = 0
+SERVICE_ERROR_NOTICE_COOLDOWN = 300  # saniye (5 dakika)
+
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO,
@@ -78,6 +82,10 @@ class RateLimitError(Exception):
     """Cerebras API kota/rate-limit (429) doldu."""
     pass
 
+class TranslationServiceError(Exception):
+    """Cerebras API'den 200 dışında bir yanıt geldi (key hatası, model hatası vb.)."""
+    pass
+
 async def query_grok(prompt: str, system_prompt: str, json_mode: bool = False) -> str:
     try:
         headers = {
@@ -104,12 +112,22 @@ async def query_grok(prompt: str, system_prompt: str, json_mode: bool = False) -
             if response.status_code == 429:
                 logger.error("Cerebras API kota/rate-limit doldu (429)")
                 raise RateLimitError("Cerebras API kota doldu")
-            return ""
-    except RateLimitError:
+            # 200/429 dışındaki her durumda (401 geçersiz key, 400 hatalı istek, 500 vb.)
+            # Render loglarında tam olarak neyin yanlış gittiğini görebilmek için
+            # HTTP kodu + Cerebras'ın döndürdüğü hata mesajını eksiksiz yazdır.
+            logger.error(f"Cerebras API hatası - HTTP {response.status_code}: {response.text}")
+            raise TranslationServiceError(f"HTTP {response.status_code}: {response.text}")
+    except (RateLimitError, TranslationServiceError):
         raise
+    except httpx.TimeoutException:
+        logger.error("Cerebras API isteği zaman aşımına uğradı (timeout)")
+        raise TranslationServiceError("Zaman aşımı")
+    except httpx.RequestError as e:
+        logger.error(f"Cerebras API bağlantı hatası: {e}")
+        raise TranslationServiceError(f"Bağlantı hatası: {e}")
     except Exception as e:
-        logger.error(f"API Error: {e}")
-        return ""
+        logger.error(f"Beklenmeyen API hatası: {e}")
+        raise TranslationServiceError(str(e))
 
 def detect_language(text: str) -> str:
     if re.search(r'[\u0400-\u04FF]', text):
@@ -219,21 +237,30 @@ async def cmd_toggle_lang(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- EĞLENCE KOMUTLARI ---
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    p = "Hakkımda metni yaz: Ben Viyana Ai Yapay zeka botuyum. Ehed tarafından tasarlandım."
-    ans = await query_grok(p, COMMAND_3LANG_PROMPT)
-    if ans: await update.message.reply_text(ans)
+    try:
+        p = "Hakkımda metni yaz: Ben Viyana Ai Yapay zeka botuyum. Ehed tarafından tasarlandım."
+        ans = await query_grok(p, COMMAND_3LANG_PROMPT)
+        if ans: await update.message.reply_text(ans)
+    except Exception as e:
+        logger.error(f"/help hatası: {e}")
 
 async def cmd_burc(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    args = " ".join(context.args) if context.args else "genel"
-    p = f"Kullanıcı için ({args}) burcu/fal hakkında eğlenceli ve kısa bir yorum yap."
-    ans = await query_grok(p, COMMAND_3LANG_PROMPT)
-    if ans: await update.message.reply_text(ans)
+    try:
+        args = " ".join(context.args) if context.args else "genel"
+        p = f"Kullanıcı için ({args}) burcu/fal hakkında eğlenceli ve kısa bir yorum yap."
+        ans = await query_grok(p, COMMAND_3LANG_PROMPT)
+        if ans: await update.message.reply_text(ans)
+    except Exception as e:
+        logger.error(f"/burc hatası: {e}")
 
 async def cmd_kral(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user.first_name
-    p = f"Günün Kralı ilan edilen kişi: {user}. Onun için kısa bir övgü fermanı yaz."
-    ans = await query_grok(p, COMMAND_3LANG_PROMPT)
-    if ans: await update.message.reply_text(ans)
+    try:
+        user = update.effective_user.first_name
+        p = f"Günün Kralı ilan edilen kişi: {user}. Onun için kısa bir övgü fermanı yaz."
+        ans = await query_grok(p, COMMAND_3LANG_PROMPT)
+        if ans: await update.message.reply_text(ans)
+    except Exception as e:
+        logger.error(f"/kral hatası: {e}")
 
 async def cmd_siralama(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
@@ -293,6 +320,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
             except Exception as notify_err:
                 logger.error(f"Kota bildirimi gönderilemedi: {notify_err}")
+
+    except TranslationServiceError as e:
+        global LAST_SERVICE_ERROR_NOTICE
+        logger.error(f"Çeviri servisi hatası (kullanıcıya bildiriliyor): {e}")
+        now = time.time()
+        if now - LAST_SERVICE_ERROR_NOTICE > SERVICE_ERROR_NOTICE_COOLDOWN:
+            LAST_SERVICE_ERROR_NOTICE = now
+            try:
+                await update.effective_message.reply_text(
+                    "⚠️ Çeviri servisine şu anda ulaşılamıyor. Render loglarını kontrol edin, "
+                    "sorun devam ederse API key'i doğrulayın."
+                )
+            except Exception as notify_err:
+                logger.error(f"Servis hatası bildirimi gönderilemedi: {notify_err}")
 
     except Exception as e:
         logger.error(f"Handle error: {e}")
