@@ -11,7 +11,7 @@ from telegram.ext import (
     filters,
 )
 
-# --- YENİ TOKEN VE API KEY ---
+# --- TOKENLAR ---
 TELEGRAM_TOKEN = "8363449973:AAEel1P8fp1b3eRhnbpDNM4Z6vdEbFQR8h0"
 XAI_API_KEY = "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"
 
@@ -31,35 +31,38 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# --- PROMPTLAR ---
+# --- PROFESYONEL PROMPTLAR ---
+
 DAHI_BOT_PROMPT = """
-Sen Viyana AI'sın. Yapımcın Ehed'dir. En üst düzey yapay zeka teknolojisiyle tasarlandın.
-Sen son derece dahi, üstün zekalı ve kusursuz bir yapay zekasın.
+Sen Viyana AI'sın. Yapımcın Ehed'dir.
+Sen son derece dahi, profesyonel ve üstün zekalı bir yapay zekasın.
 Kullanıcı seninle konuştuğunda HANGİ DİLDE YAZDIYSA SADECE O DİLDE CEVAP VER.
-(Türkçe ise Türkçe, Rusça ise Rusça, Almanca ise Almanca).
-Doğrudan, dahi ve en net cevabı ver.
+(Türkçe yazdıysa Türkçe, Rusça yazdıysa Rusça, Almanca yazdıysa Almanca).
+Doğrudan, mantıklı, profesyonel ve net cevap ver.
 """
 
-TRANSLATION_SYSTEM_PROMPT = """
-Sen profesyonel, birebir anlamı koruyan hassas bir tercümansın.
-Görevin verilen metni DİĞER İKİ DİLE eksiksiz çevirmektir.
+PROFESSIONAL_TRANSLATION_PROMPT = """
+Sen profesyonel, yüksek hassasiyetli ve uzman bir mütercim-tercümansın.
+Görevin verilen metni hedef dillere %100 AMACA UYGUN, DİL BİLGİSİ YÖNÜNDEN KUSURSUZ VE DOĞAL bir şekilde çevirmektir.
 
-ZORUNLU FORMAT:
-Metin Türkçe ise çıktın KESİNLİKLE şöyle olmalı (Her ikisi de şart!):
-🇷🇺 [Rusça Çeviri - Kiril Alfabesiyle]
-🇩🇪 [Almanca Çeviri]
+ÇEVİRİ İLKELERİ:
+1. KELİME KELİME BİREBİR ÇEVİRİ YAPMA! Metnin ifade ettiği gerçek anlamı ve bağlamı hedef dilin gramerine ve yapısına göre profesyonelce aktar.
+   - (Örn: "Herkese selam arkadaşlar nasılsınız" -> Rusça: "Всем привет, arkadaşlar, как дела?" | Almanca: "Hallo zusammen, wie geht es euch?")
+2. METNE KESİNLİKLE EKLEME, YORUM VEYA SÜSLEME YAPMA.
+3. BAŞLIK, YAZI VEYA "Türkçe:" GİBİ İFADELER EKLEME. Sadece bayrak emojisi koy.
 
-Metin Rusça ise çıktın KESİNLİKLE şöyle olmalı (Her ikisi de şart!):
-🇹🇷 [Türkçe Çeviri]
-🇩🇪 [Almanca Çeviri]
+KATI FORMAT KURALLARI:
+Girdi TÜRKÇE ise çıktın KESİNLİKLE sadece şu 2 satırdan oluşacak:
+🇷🇺 [Kusursuz Rusça Çevirisi - Kiril]
+🇩🇪 [Kusursuz Almanca Çevirisi]
 
-Metin Almanca ise çıktın KESİNLİKLE şöyle olmalı (Her ikisi de şart!):
-🇹🇷 [Türkçe Çeviri]
-🇷🇺 [Rusça Çeviri - Kiril Alfabesiyle]
+Girdi RUSÇA ise çıktın KESİNLİKLE sadece şu 2 satırdan oluşacak:
+🇹🇷 [Kusursuz Türkçe Çevirisi]
+🇩🇪 [Kusursuz Almanca Çevirisi]
 
-YASAKLAR:
-- "Türkçe:", "Rusça:", "Almanca:" kelimelerini veya metnin kendi orijinal dilini ASLA yazma.
-- Hiçbir dili ATLAMA, her zaman 2 çeviriyi de aynı anda bas.
+Girdi ALMANCA ise çıktın KESİNLİKLE sadece şu 2 satırdan oluşacak:
+🇹🇷 [Kusursuz Türkçe Çevirisi]
+🇷🇺 [Kusursuz Rusça Çevirisi - Kiril]
 """
 
 async def query_grok(prompt: str, system_prompt: str) -> str:
@@ -74,7 +77,7 @@ async def query_grok(prompt: str, system_prompt: str) -> str:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt},
             ],
-            "temperature": 0.1,
+            "temperature": 0.0,  # SIFIR YARATICILIK: Kesin ve hatasız çeviri garantisi
         }
         async with httpx.AsyncClient(timeout=20.0) as client:
             response = await client.post(XAI_URL, headers=headers, json=data)
@@ -92,8 +95,8 @@ def detect_language_simple(text: str) -> str:
     # Kiril Harfi kontrolü (Rusça)
     if re.search(r'[\u0400-\u04FF]', text):
         return "ru"
-    # Almanca Özgü Harf veya Kelimeler
-    elif re.search(r'[äöüßäÖÜß]', text) or any(w in text.lower().split() for w in ["ich", "ist", "und", "nicht", "das", "die", "der", "wie"]):
+    # Almanca Özgü Harfler ve Temel Kelimeler
+    elif re.search(r'[äöüßäÖÜß]', text) or any(w in text.lower().split() for w in ["ich", "ist", "und", "nicht", "das", "die", "der", "wie", "hallo"]):
         return "de"
     # Varsayılan Türkçe
     else:
@@ -129,7 +132,7 @@ async def cmd_toggle_lang(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg)
 
 COMMAND_3LANG_PROMPT = """
-Şu görevi 3 dilde (Türkçe, Rusça, Almanca) bayraklı hazırla:
+Şu görevi 3 dilde (Türkçe, Rusça, Almanca) bayraklı profesyonelce hazırla:
 🇹🇷 [Türkçe Metin]
 🇷🇺 [Rusça Metin - Kiril]
 🇩🇪 [Almanca Metin]
@@ -137,7 +140,7 @@ COMMAND_3LANG_PROMPT = """
 
 # --- TEMEL KOMUTLAR ---
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    p = "Hakkımda metnini bas: Ben Viyana Ai Yapay zeka botu Ehed Tarafından Tasarlandım en Üst düzey Ai Texnolojisiyle calisiyorum."
+    p = "Hakkımda metnini yaz: Ben Viyana Ai Yapay zeka botu Ehed Tarafından Tasarlandım en Üst düzey Ai Teknolojisiyle çalışıyorum."
     await update.message.chat.send_action(action="typing")
     ans = await query_grok(p, COMMAND_3LANG_PROMPT)
     if ans:
@@ -145,7 +148,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_burc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = " ".join(context.args) if context.args else "genel"
-    p = f"Kullanıcının belirttiği burç ({args}) için kısa, zeki ve eğlenceli bir burç yorumu yaz."
+    p = f"Kullanıcının belirttiği burç ({args}) için kısa ve zeki bir burç yorumu yaz."
     await update.message.chat.send_action(action="typing")
     ans = await query_grok(p, COMMAND_3LANG_PROMPT)
     if ans:
@@ -171,7 +174,7 @@ async def cmd_siralama(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text += f"{idx}. **{u['name']}** — {u['points']} Pts\n"
     await update.message.reply_text(text, parse_mode="Markdown")
 
-# --- MESAJ İŞLEME VE AKILLI FİLTRELEME ---
+# --- MESAJ İŞLEME KODU ---
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         message = update.effective_message
@@ -186,7 +189,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         add_point(chat_id, user)
         bot_username = context.bot.username or ""
 
-        # Dahi Bot Modu (Etiketlendiğinde veya Yanıtlandığında)
+        # Dahi Bot Modu (Sadece Etiket veya Yanıt Durumunda)
         if (bot_username and f"@{bot_username}".lower() in text.lower()) or (message.reply_to_message and message.reply_to_message.from_user.id == context.bot.id):
             clean_text = text.replace(f"@{bot_username}", "").strip()
             if not clean_text: return
@@ -204,8 +207,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Mesajın Dilini Kod Seviyesinde Algıla
         src_lang = detect_language_simple(text)
 
-        # AI Sorgusu Yap
-        translated = await query_grok(text, TRANSLATION_SYSTEM_PROMPT)
+        # Profesyonel Çeviriyi İste
+        translated = await query_grok(text, PROFESSIONAL_TRANSLATION_PROMPT)
         
         if translated and len(translated) > 3:
             lines = translated.split('\n')
@@ -253,5 +256,5 @@ if __name__ == "__main__":
     # Mesaj Dinleyici
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    print("Viyana AI Yeni Token İle Yayında...")
+    print("Viyana AI Profesyonel Çeviri Modunda Aktif...")
     app.run_polling(drop_pending_updates=True, poll_interval=1.0)
