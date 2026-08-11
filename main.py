@@ -31,29 +31,29 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# --- PROMPTLAR ---
+# --- TAM VE KESİNLİKLE EKSİKSİZ ÇEVİRİ PROMPTU ---
 SYSTEM_TRANSLATE_PROMPT = """
-You are a professional translator.
-Translate the input message accurately into the requested target languages.
+You are an uncompromising translation engine. 
+Your task is to translate short chat messages into target languages.
 
-CRITICAL INSTRUCTIONS:
-1. Understand informal Turkish, Azerbaijani Turkish, and common chat phrases correctly.
-2. NEVER truncate sentences. Output full translations for both target languages.
-3. Do NOT make small talk or output explanations.
-4. Output ONLY lines starting with flag emojis.
+STRICT MANDATORY RULES:
+1. You MUST ALWAYS output EXACTLY TWO lines of translations (unless one language is disabled by system).
+2. NEVER skip German or Russian, even if the input text is very short (e.g., "Tmm", "Gelir gülüm").
+3. NEVER truncate sentences or leave lines missing.
+4. Output ONLY lines starting with flag emojis. No explanations.
 
-FORMAT REQUIRED:
-If input is Turkish / Azerbaijani:
-🇷🇺 [Russian translation]
-🇩🇪 [German translation]
+OUTPUT FORMAT REQUIREMENTS:
+If input language is Turkish / Azerbaijani:
+🇷🇺 [Russian Translation]
+🇩🇪 [German Translation]
 
-If input is Russian:
-🇹🇷 [Turkish translation]
-🇩🇪 [German translation]
+If input language is Russian:
+🇹🇷 [Turkish Translation]
+🇩🇪 [German Translation]
 
-If input is German:
-🇹🇷 [Turkish translation]
-🇷🇺 [Russian translation]
+If input language is German:
+🇹🇷 [Turkish Translation]
+🇷🇺 [Russian Translation]
 """
 
 COMMAND_3LANG_PROMPT = """
@@ -76,8 +76,8 @@ async def query_grok(prompt: str, system_prompt: str) -> str:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt},
             ],
-            "temperature": 0.2,
-            "max_tokens": 250
+            "temperature": 0.1,
+            "max_tokens": 300
         }
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.post(XAI_URL, headers=headers, json=data)
@@ -129,7 +129,7 @@ async def cmd_toggle_lang(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     await update.message.reply_text(msg)
 
-# --- DİĞER KOMUTLAR (EĞLENCE VE YARDIM) ---
+# --- EĞLENCE KOMUTLARI ---
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     p = "Hakkımda metni yaz: Ben Viyana Ai Yapay zeka botuyum. Ehed tarafından tasarlandım."
     ans = await query_grok(p, COMMAND_3LANG_PROMPT)
@@ -172,13 +172,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         add_point(chat_id, user)
 
-        # Etiketleri (@username) temizle
         clean_text = re.sub(r'@\w+', '', text).strip()
         words = clean_text.split()
         if len(words) < 1 or "http" in text: return
 
         src_lang = detect_language(clean_text)
-        raw_translation = await query_grok(clean_text, SYSTEM_TRANSLATE_PROMPT)
+        raw_translation = await query_grok(f"Translate: \"{clean_text}\"", SYSTEM_TRANSLATE_PROMPT)
 
         if not raw_translation: return
 
@@ -189,12 +188,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             line_clean = line.strip()
             if not line_clean: continue
 
-            # 1. Kaynak dille aynı olan bayrağı filtrele
+            # 1. Kaynak dili filtrele
             if src_lang == "tr" and line_clean.startswith("🇹🇷"): continue
             if src_lang == "ru" and line_clean.startswith("🇷🇺"): continue
             if src_lang == "de" and line_clean.startswith("🇩🇪"): continue
 
-            # 2. Komutla kapatılan dili filtrele
+            # 2. Kapalı dili filtrele
             if not LANG_STATUS["tr"] and line_clean.startswith("🇹🇷"): continue
             if not LANG_STATUS["ru"] and line_clean.startswith("🇷🇺"): continue
             if not LANG_STATUS["de"] and line_clean.startswith("🇩🇪"): continue
@@ -212,17 +211,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 if __name__ == "__main__":
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     
-    # Dil Aç/Kapa Komutları
     app.add_handler(CommandHandler(["turkce", "rusca", "almanca"], cmd_toggle_lang))
-    
-    # Genel Komutlar (Komut Takma Adları İle Birlikte)
     app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(CommandHandler("burc", cmd_burc))
     app.add_handler(CommandHandler("kral", cmd_kral))
     app.add_handler(CommandHandler(["siralama", "sirallama", "puan"], cmd_siralama))
     
-    # Mesaj Dinleyici
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    print("Viyana AI Tüm Komutlar Aktif Olarak Çalışıyor...")
+    print("Viyana AI Güncellenmiş Kod İle Yayında...")
     app.run_polling(drop_pending_updates=True)
+
