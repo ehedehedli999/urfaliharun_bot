@@ -18,7 +18,7 @@ TELEGRAM_TOKEN = "8363449973:AAHQ4HBe6U40Ig1J0N2KA773v_F8btY6SfI"
 CEREBRAS_API_KEY = "csk-2nr3xkmt8x9eyfkc9hhc2nyrwf5nrx8kdt4pn8hwdjvewfxv"
 
 CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions"
-CEREBRAS_MODEL = "gpt-oss-120b"
+CEREBRAS_MODEL = "llama3.1-70b"
 
 USER_SCORES = {}
 LANG_STATUS = {
@@ -27,13 +27,11 @@ LANG_STATUS = {
     "de": True
 }
 
-# Kota (429) uyarısını gruba spam gibi göndermemek için son bildirim zamanı takibi
 LAST_RATE_LIMIT_NOTICE = 0
-RATE_LIMIT_NOTICE_COOLDOWN = 300  # saniye (5 dakika)
+RATE_LIMIT_NOTICE_COOLDOWN = 300
 
-# Genel API hatası (401/400/500 vb.) bildirimi için aynı mantıkta ayrı bir zamanlayıcı
 LAST_SERVICE_ERROR_NOTICE = 0
-SERVICE_ERROR_NOTICE_COOLDOWN = 300  # saniye (5 dakika)
+SERVICE_ERROR_NOTICE_COOLDOWN = 300
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -41,7 +39,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# --- TAM VE KESİNLİKLE EKSİKSİZ ÇEVİRİ PROMPTU (JSON ZORUNLU) ---
 SYSTEM_TRANSLATE_PROMPT = """
 You are a professional native-level translator for a multilingual Telegram community chat (Turkish, Russian, German speakers).
 
@@ -79,11 +76,9 @@ Sana verilen metni veya görevi 3 dilde (Türkçe, Rusça, Almanca) yanıtla.
 """
 
 class RateLimitError(Exception):
-    """Cerebras API kota/rate-limit (429) doldu."""
     pass
 
 class TranslationServiceError(Exception):
-    """Cerebras API'den 200 dışında bir yanıt geldi (key hatası, model hatası vb.)."""
     pass
 
 async def query_grok(prompt: str, system_prompt: str, json_mode: bool = False) -> str:
@@ -101,9 +96,6 @@ async def query_grok(prompt: str, system_prompt: str, json_mode: bool = False) -
             "temperature": 0.1,
             "max_completion_tokens": 300
         }
-        
-        # NOT: response_format parametresi Cerebras API ile HTTP 400 hatası yarattığı için kaldırıldı.
-        # Regex ile JSON ayıklama mekanizması zaten kodda güvenli şekilde çalışmaktadır.
 
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.post(CEREBRAS_URL, headers=headers, json=data)
