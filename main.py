@@ -13,7 +13,6 @@ TELEGRAM_TOKEN = "8363449973:AAEel1P8fp1b3eRhnbpDNM4Z6vdEbFQR8h0"
 XAI_API_KEY = "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"
 
 XAI_URL = "https://api.groq.com/openai/v1/chat/completions"
-# MODELİ 70B PARAMETRELİ MÜKEMMEL MODELLE DEĞİŞTİRDİK
 GROK_MODEL = "llama-3.3-70b-versatile"
 
 logging.basicConfig(
@@ -22,15 +21,29 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# EXPERT TRANSLATOR PROMPT (AZERBAYCAN TÜRKÇESİ DAHİL)
 SYSTEM_PROMPT = """
-You are a professional, highly precise translation engine.
-Translate the input text into the requested target languages accurately.
+You are a world-class professional translator.
+Your job is to translate short chat messages into highly natural, fluent, and correct target languages.
 
-RULES:
-1. Do NOT write conversational filler like 'Sure', 'Here is the translation'.
-2. Do NOT write in the source language.
-3. Output MUST ONLY contain lines starting with flag emojis.
-4. Keep the translation natural and grammatically correct.
+CRITICAL INSTRUCTIONS:
+1. Understand informal Turkish, Azerbaijani Turkish (e.g., "salam necesen", "necesiniz", "cox"), and slang correctly before translating.
+2. NEVER truncate sentences or leave incomplete phrases (e.g., never output "ich brauche" for greetings).
+3. Do NOT include any explanations, source text, or extra conversation.
+4. ONLY output lines starting with the corresponding flag emojis.
+
+FORMAT REQUIRED:
+If input is Turkish / Azerbaijani:
+🇷🇺 [Natural Russian translation]
+🇩🇪 [Natural German translation]
+
+If input is Russian:
+🇹🇷 [Natural Turkish translation]
+🇩🇪 [Natural German translation]
+
+If input is German:
+🇹🇷 [Natural Turkish translation]
+🇷🇺 [Natural Russian translation]
 """
 
 def detect_language(text: str) -> str:
@@ -38,20 +51,13 @@ def detect_language(text: str) -> str:
     if re.search(r'[\u0400-\u04FF]', text):
         return "ru"
     # Almanca karakteristik kelimeler / karakterler
-    elif re.search(r'[äöüßÖÜß]', text) or any(w in text.lower().split() for w in ["ich", "ist", "und", "nicht", "das", "die", "der", "wie", "allen", "dank"]):
+    elif re.search(r'[äöüßÖÜß]', text) or any(w in text.lower().split() for w in ["ich", "ist", "und", "nicht", "das", "die", "der", "wie", "hallo"]):
         return "de"
     else:
         return "tr"
 
 async def get_translation(text: str, source_lang: str) -> str:
-    if source_lang == "tr":
-        target_instructions = "Translate this Turkish text into Russian and German ONLY.\nFormat:\n🇷🇺 [Russian Translation]\n🇩🇪 [German Translation]"
-    elif source_lang == "ru":
-        target_instructions = "Translate this Russian text into Turkish and German ONLY.\nFormat:\n🇹🇷 [Turkish Translation]\n🇩🇪 [German Translation]"
-    else:
-        target_instructions = "Translate this German text into Turkish and Russian ONLY.\nFormat:\n🇹🇷 [Turkish Translation]\n🇷🇺 [Russian Translation]"
-
-    user_prompt = f"Text: \"{text}\"\n\n{target_instructions}"
+    user_prompt = f"Translate this message accurately:\n\"{text}\""
 
     try:
         headers = {
@@ -64,7 +70,8 @@ async def get_translation(text: str, source_lang: str) -> str:
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt},
             ],
-            "temperature": 0.0,
+            "temperature": 0.1,
+            "max_tokens": 150
         }
         async with httpx.AsyncClient(timeout=15.0) as client:
             response = await client.post(XAI_URL, headers=headers, json=data)
@@ -84,25 +91,22 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         text = message.text.strip()
 
-        # Komutları ve bot mesajlarını atla
+        # Bot mesajlarını ve komutları atla
         if update.effective_user.is_bot or text.startswith("/"):
             return
 
-        # Etiketleri veya linkleri temizle / filtrele
+        # Çok kısa veya link içeren girdileri atla
         words = text.split()
         if len(words) < 2 or "http" in text:
             return
 
-        # Dil tespiti yap
         src_lang = detect_language(text)
-
-        # Çeviri iste
         raw_translation = await get_translation(text, src_lang)
 
         if not raw_translation:
             return
 
-        # ÇIKTIYI PYTHON SEVİYESİNDE TEMİZLE (AI HATA YAPSA BİLE DÜZELTİR)
+        # ÇIKTIYI KOD SEVİYESİNDE SÜZGEÇTEN GEÇİR
         lines = raw_translation.split("\n")
         valid_lines = []
 
@@ -111,7 +115,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if not line_clean:
                 continue
 
-            # Kaynak dille aynı bayrağı içeren satırı KESİNLİKLE sil
+            # Kaynak dille aynı olan bayraklı satırı yazma
             if src_lang == "tr" and line_clean.startswith("🇹🇷"):
                 continue
             if src_lang == "ru" and line_clean.startswith("🇷🇺"):
@@ -119,7 +123,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if src_lang == "de" and line_clean.startswith("🇩🇪"):
                 continue
 
-            # Sadece geçerli bayraklarla başlayanları al
             if any(line_clean.startswith(flag) for flag in ["🇹🇷", "🇷🇺", "🇩🇪"]):
                 valid_lines.append(line_clean)
 
@@ -134,5 +137,5 @@ if __name__ == "__main__":
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    print("Viyana AI Llama-3.3-70B Modeli İle Yayında...")
+    print("Viyana AI Güncellenmiş Çeviri Sistemi İle Yayında...")
     app.run_polling(drop_pending_updates=True)
