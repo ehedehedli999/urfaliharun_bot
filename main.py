@@ -1,23 +1,31 @@
 import os
-import google.generativeai as genai
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
+from openai import OpenAI
 
-# Gemini API Yapılandırması
-genai.configure(api_key="SENIN_GEMINI_API_KEY")
+# --- API VE TOKEN AYARLARI ---
+API_KEY = "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"
+TELEGRAM_BOT_TOKEN = "8363449973:AAElwMlaNrlKJ7sh8PApYPxWb13YqrHJakU"
 
-# C2 Seviye Yerelleştirme ve Akıllı Bot Sistem Talimatı
-system_instruction = """
-Sen "Viyana AI" adlı akıllı bir grup asistanı, çevirmen ve moderatörsün.
-Grupta iki modda çalışırsın:
-1. ÇEVİRİ MODU: Gelen mesajın dilini algıla. Kelimesi kelimesine (literal) çeviri ASLA yapma. "Trip atmak", "pamuk kalpli olmak" gibi deyimleri ve argoyu hedef dilde o kültürün kullandığı en doğal C2 seviyesindeki yerel kalıplarla çevir.
-2. YAPAY ZEKA SOHBET MODU: Etiketlendiğin (@bot_adi) veya doğrudan sana soru sorulduğu durumlarda sadece çeviri yapma; akıllı, mantıklı ve samimi bir insan gibi hedef dilde doğrudan soruya yanıt ver.
-"""
-
-model = genai.GenerativeModel(
-    model_name="gemini-1.5-pro",
-    system_instruction=system_instruction
+# OpenRouter / OpenAI SDK Bağlantısı
+client = OpenAI(
+    api_key=API_KEY,
+    base_url="https://openrouter.ai/api/v1"
 )
+
+MODEL_NAME = "openai/gpt-5.5"
+
+# --- C2 SEVİYE SİSTEM TALİMATI ---
+SYSTEM_INSTRUCTION = """
+Sen profesyonel bir C2 seviye dilbilimci, yerelleştirme uzmanı ve "Viyana AI" adlı akıllı bir grup asistanısın.
+
+KESİNLİKLE UYMAN GEREKEN KURALLAR:
+1. Kelimesi kelimesine (literal) veya makineleşmiş, saçma çeviriler yapmak KESİNLİKLE YASAKTIR.
+2. "Trip atmak", "kendine gelmek", "pamuk kalpli olmak" gibi deyimleri, argoları ve günlük konuşma kalıplarını asla kelime kelime çevirme. Hedef dilde o kültürün sokağında, sosyal medyasında kullanılan birebir en doğal C2 seviyesindeki deyimsel karşılığını kullan.
+3. ÇALIŞMA MODLARIN:
+   - SOHBET MODU (Etiketlendiğinde / Yanıt verildiğinde): Çeviri yapma. Kullanıcıya zeki, akıllı, samimi ve doğal bir insan gibi o dilde doğrudan yanıt ver.
+   - ÇEVİRİ MODU (Etiketlenmediğinde): Gelen mesajın dilini tespit et ve kurallı hedef dillere kusursuz bir şekilde çevir.
+"""
 
 async def handle_message(update: Update, context: ContextTypes.DynamicContext):
     message = update.message
@@ -26,46 +34,64 @@ async def handle_message(update: Update, context: ContextTypes.DynamicContext):
 
     user_text = message.text
     bot_username = context.bot.username
-    is_tagged = f"@{bot_username}" in user_text or (message.reply_to_message and message.reply_to_message.from_user.username == bot_username)
+    
+    # Etiket veya Yanıt kontrolü
+    is_tagged = False
+    if bot_username and f"@{bot_username.lower()}" in user_text.lower():
+        is_tagged = True
+    if message.reply_to_message and message.reply_to_message.from_user and message.reply_to_message.from_user.username:
+        if bot_username and message.reply_to_message.from_user.username.lower() == bot_username.lower():
+            is_tagged = True
 
-    # 1. DURUM: BOT ETİKETLENDİYSE (Yapay Zeka Sohbet Modu)
+    # --- MOD 1: SOHBET MODU (Etiketlendiğinde) ---
     if is_tagged:
-        prompt = f"""
-        Kullanıcı sana doğrudan yazdı/etiketledi: "{user_text}"
-        Bu mesaja akıllı, zeki ve doğal bir insan gibi (C2 seviyesinde) yanıt ver. Hangi dilde yazıldıysa o dilde cevap ver.
-        """
-        response = model.generate_content(prompt)
-        await message.reply_text(response.text)
+        clean_text = user_text
+        if bot_username:
+            clean_text = clean_text.replace(f"@{bot_username}", "").replace(f"@{bot_username.lower()}", "").strip()
+        
+        chat_prompt = f"Kullanıcı sana doğrudan seslendi: '{clean_text}'. Çeviri yapmadan, C2 yerlisi gibi akıllı, doğal ve samimi bir insan yanıtı ver."
+        
+        response = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[
+                {"role": "system", "content": SYSTEM_INSTRUCTION},
+                {"role": "user", "content": chat_prompt}
+            ]
+        )
+        await message.reply_text(response.choices[0].message.content)
         return
 
-    # 2. DURUM: OTOMATİK ÇEVİRİ MODU (Kurallı Matris)
-    # Önce mesajın dilini ve hangi dillere çevrilmesi gerektiğini AI ile belirleyelim
-    routing_prompt = f"""
-    Aşağıdaki mesajı analize et ve kaynak dilini tespit et: "{user_text}"
+    # --- MOD 2: OTOMATİK ÇEVİRİ MODU (Etiket yoksa) ---
+    translation_prompt = f"""
+    Aşağıdaki mesajı analiz et ve kaynak dilini tespit et: "{user_text}"
     
-    Kurallara göre hangi dillere çevrilmesi gerektiğini belirle:
-    - Eğer kaynak dil İngilizce ise -> Hedefler: Türkçe, Almanca, Rusça
-    - Eğer kaynak dil Almanca ise -> Hedefler: Türkçe, Rusça
-    - Eğer kaynak dil Rusça ise -> Hedefler: Türkçe, Almanca
-    - Eğer kaynak dil Azerice veya Türkçe ise -> Hedefler: Almanca, Rusça
+    Şu çeviri matrisi kurallarına harfiyen uy:
+    - İngilizce -> Türkçe, Almanca, Rusça
+    - Almanca -> Türkçe, Rusça
+    - Rusça -> Türkçe, Almanca
+    - Azerice veya Türkçe -> Almanca, Rusça
     
-    Çevirileri asla kelimesi kelimesine yapma, C2 seviyesinde yerel deyimlerle yap.
-    Şu formatta çıktı ver (başka hiçbir şey ekleme):
-    Türkçe: [Çeviri veya -]
-    Almanca: [Çeviri veya -]
-    Rusça: [Çeviri veya -]
+    Çeviriler kelimesi kelimesine olmasın, C2 seviyesinde yerel deyimlerle yapılsın.
+    Çıktıyı sadece şu formatta ver:
+    🇹🇷 [Türkçe çevirisi varsa yaz, yoksa atla]
+    🇩🇪 [Almanca çevirisi varsa yaz, yoksa atla]
+    🇷🇺 [Rusça çevirisi varsa yaz, yoksa atla]
     """
     
-    response = model.generate_content(routing_prompt)
-    translation_output = response.text
+    response = client.chat.completions.create(
+        model=MODEL_NAME,
+        messages=[
+            {"role": "system", "content": SYSTEM_INSTRUCTION},
+            {"role": "user", "content": translation_prompt}
+        ]
+    )
+    
+    output_text = response.choices[0].message.content
+    if output_text and len(output_text.strip()) > 0:
+        await message.reply_text(output_text.strip())
 
-    # Sonucu gruba bayrak ikonlarıyla düzenli bir şekilde gönderelim
-    formatted_reply = f"🌐 **Akıllı Çeviri:**\n{translation_output}"
-    await message.reply_text(formatted_reply, parse_mode="Markdown")
-
-# Botu başlatma bloğu
 if __name__ == "__main__":
-    app = ApplicationBuilder().token("SENIN_TELEGRAM_BOT_TOKEN").build()
+    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
-    print("Viyana AI Bot aktif ve çalışıyor...")
+    print("Viyana AI Bot aktif: OpenAI / OpenRouter GPT-5.5 SDK entegrasyonu tamamlandı.")
     app.run_polling()
