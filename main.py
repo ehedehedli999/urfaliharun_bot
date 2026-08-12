@@ -1,7 +1,8 @@
 import logging
 import random
 import re
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder,
@@ -15,7 +16,7 @@ from telegram.ext import (
 TELEGRAM_TOKEN = "8363449973:AAElwMlaNrlKJ7sh8PApYPxWb13YqrHJakU"
 GEMINI_API_KEY = "AIzaSyBB1H7YC2D6bC7oNImuGuMq7elV5w49wp4"
 
-genai.configure(api_key=GEMINI_API_KEY)
+client = genai.Client(api_key=GEMINI_API_KEY)
 
 USER_SCORES = {}
 TRANSLATION_CACHE = {}
@@ -71,13 +72,11 @@ async def query_ai(prompt: str, system_prompt: str) -> str:
         return TRANSLATION_CACHE[cache_key]
 
     try:
-        model = genai.GenerativeModel(
-            model_name="gemini-1.5-flash",
-            system_instruction=system_prompt
-        )
-        response = model.generate_content(
-            prompt,
-            generation_config=genai.types.GenerationConfig(
+        response = client.models.generate_content(
+            model='gemini-2.0-flash',
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=system_prompt,
                 temperature=0.1,
                 max_output_tokens=300
             )
@@ -219,6 +218,5 @@ if __name__ == "__main__":
     
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    print("Viyana AI Resmi SDK ile Yayında...")
+    print("Viyana AI 2.0-Flash ile Sorunsuz Yayında...")
     app.run_polling(drop_pending_updates=True)
-
