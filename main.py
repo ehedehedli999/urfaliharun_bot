@@ -33,37 +33,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# --- ANA DİL SEVİYESİNDE DOĞRU VE HIZLI ÇEVİRİ PROMPTU ---
-SYSTEM_TRANSLATE_PROMPT = """
-You are a native chat translator. Translate daily slang, colloquial words, and affectionate terms (like "canım" -> dear/honey, NEVER mom) accurately and naturally as a native speaker.
-
-EXAMPLES:
-Input: Selam
-🇷🇺 Привет
-🇩🇪 Hallo
-
-Input: Nasılsın canım
-🇷🇺 Как дела, дорогая?
-🇩🇪 Wie geht's, Schatz?
-
-Input: Tamam
-🇷🇺 Окей
-🇩🇪 Okay
-
-RULES:
-Output ONLY the two translated lines with flags. No extra text, no intros.
-"""
-
-COMMAND_3LANG_PROMPT = """
-Sana verilen metni hızlıca 3 dilde (Türkçe, Rusça, Almanca) eksiksiz yanıtla.
-Çıktı formatı KESİNLİKLE şöyle olmalı:
-🇹🇷 [Türkçe İfade]
-🇷🇺 [Rusça İfade - Kiril]
-🇩🇪 [Almanca İfade]
-"""
-
 async def query_ai(prompt: str, system_prompt: str, max_tokens: int = 100) -> str:
-    cache_key = f"{system_prompt[:10]}:{prompt}"
+    cache_key = f"{system_prompt[:15]}:{prompt}"
     if cache_key in TRANSLATION_CACHE:
         return TRANSLATION_CACHE[cache_key]
 
@@ -80,12 +51,12 @@ async def query_ai(prompt: str, system_prompt: str, max_tokens: int = 100) -> st
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt}
         ],
-        "temperature": 0.0,
+        "temperature": 0.1,
         "max_tokens": max_tokens
     }
 
     try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
+        async with httpx.AsyncClient(timeout=6.0) as client:
             response = await client.post(OPENROUTER_URL, json=payload, headers=headers)
             if response.status_code == 200:
                 data = response.json()
@@ -104,7 +75,7 @@ async def query_ai(prompt: str, system_prompt: str, max_tokens: int = 100) -> st
 def detect_language(text: str) -> str:
     if re.search(r'[\u0400-\u04FF]', text):
         return "ru"
-    elif re.search(r'[äöüßÖÜß]', text) or any(w in text.lower().split() for w in ["ich", "ist", "und", "nicht", "das", "die", "der", "wie", "hallo"]):
+    elif re.search(r'[äöüßÄÖÜ]', text) or any(w in text.lower().split() for w in ["ich", "ist", "und", "nicht", "das", "die", "der", "wie", "hallo", "hauptsache", "schokolade", "gott", "zeit", "fleisch"]):
         return "de"
     else:
         return "tr"
@@ -142,14 +113,16 @@ async def cmd_toggle_lang(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg)
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    sys_p = "Sana verilen metni Türkçe, Rusça ve Almanca olarak tam ve doğru çevir."
     p = "Hakkımda metni yaz: Ben Viyana Ai Yapay zeka botuyum. Ehed tarafından tasarlandım."
-    ans = await query_ai(p, COMMAND_3LANG_PROMPT, max_tokens=200)
+    ans = await query_ai(p, sys_p, max_tokens=200)
     if ans: await update.message.reply_text(ans)
 
 async def cmd_kral(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user.first_name
+    sys_p = "Sana verilen metni Türkçe, Rusça ve Almanca olarak tam ve doğru çevir."
     p = f"Günün Kralı ilan edilen kişi: {user}. Onun için coşkulu ama kısa bir övgü fermanı yaz."
-    ans = await query_ai(p, COMMAND_3LANG_PROMPT, max_tokens=200)
+    ans = await query_ai(p, sys_p, max_tokens=200)
     if ans: await update.message.reply_text(ans)
 
 async def cmd_siralama(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -178,24 +151,50 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         add_point(chat_id, user)
 
         clean_text = re.sub(r'@\w+', '', text).strip()
-        
         if len(clean_text) < 1 or "http" in text: return
 
+        # 1. Kaynak dili kesin olarak tespit et
         src_lang = detect_language(clean_text)
-        raw_translation = await query_ai(clean_text, SYSTEM_TRANSLATE_PROMPT, max_tokens=90)
 
+        # 2. Dile göre kesin ve net çeviri talimatları oluştur
+        if src_lang == "tr":
+            if not LANG_STATUS["ru"] and not LANG_STATUS["de"]: return
+            system_prompt = (
+                "You are an expert native chat translator. Translate the given Turkish message into natural, fluent Russian and German. "
+                "Do NOT do literal word-for-word translation; use native conversational idioms. "
+                "Output ONLY the two translated lines in this exact format, with no extra text or explanations:\n"
+                "🇷🇺 [Russian Translation]\n"
+                "🇩🇪 [German Translation]"
+            )
+        elif src_lang == "ru":
+            if not LANG_STATUS["tr"] and not LANG_STATUS["de"]: return
+            system_prompt = (
+                "You are an expert native chat translator. Translate the given Russian message into natural, fluent Turkish and German. "
+                "Do NOT do literal word-for-word translation; use native conversational idioms. "
+                "Output ONLY the two translated lines in this exact format, with no extra text or explanations:\n"
+                "🇹🇷 [Turkish Translation]\n"
+                "🇩🇪 [German Translation]"
+            )
+        else: # de
+            if not LANG_STATUS["tr"] and not LANG_STATUS["ru"]: return
+            system_prompt = (
+                "You are an expert native chat translator. Translate the given German message into natural, fluent Turkish and Russian. "
+                "Do NOT do literal word-for-word translation; use native conversational idioms. "
+                "Output ONLY the two translated lines in this exact format, with no extra text or explanations:\n"
+                "🇹🇷 [Turkish Translation]\n"
+                "🇷🇺 [Russian Translation]"
+            )
+
+        raw_translation = await query_ai(clean_text, system_prompt, max_tokens=150)
         if not raw_translation: return
 
+        # İstek dışı kapalı diller varsa temizle
         lines = raw_translation.split("\n")
         valid_lines = []
 
         for line in lines:
             line_clean = line.strip()
             if not line_clean: continue
-
-            if src_lang == "tr" and line_clean.startswith("🇹🇷"): continue
-            if src_lang == "ru" and line_clean.startswith("🇷🇺"): continue
-            if src_lang == "de" and line_clean.startswith("🇩🇪"): continue
 
             if not LANG_STATUS["tr"] and line_clean.startswith("🇹🇷"): continue
             if not LANG_STATUS["ru"] and line_clean.startswith("🇷🇺"): continue
@@ -221,5 +220,6 @@ if __name__ == "__main__":
     
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    print("Viyana AI - Ultra Hızlı ve Doğru Çeviri Modu ile Yayında...")
+    print("Viyana AI - Kusursuz Dinamik Çeviri Modu ile Yayında...")
     app.run_polling(drop_pending_updates=True)
+
