@@ -76,21 +76,19 @@ async def handle_message(update: Update, context: ContextTypes.DynamicContext):
         return[span_16](start_span)[span_16](end_span)
 
     # --- MOD 2: OTOMATİK ÇEVİRİ MODU (Etiket yoksa) ---
-    translation_prompt = f"""
-    Aşağıdaki mesajı analiz et ve kaynak dilini tespit et: "{user_text}"
-    
-    Şu çeviri matrisi kurallarına harfiyen uy:
-    - İngilizce -> Türkçe, Almanca, Rusça
-    - Almanca -> Türkçe, Rusça
-    - Rusça -> Türkçe, Almanca
-    - Azerice veya Türkçe -> Almanca, Rusça
-    
-    Çeviriler kelimesi kelimesine olmasın, C2 seviyesinde yerel deyimlerle yapılsın.
-    Çıktıyı sadece şu formatta ver:
-    🇹🇷 [Türkçe çevirisi varsa yaz, yoksa atla]
-    🇩🇪 [Almanca çevirisi varsa yaz, yoksa atla]
-    🇷🇺 [Rusça çevirisi varsa yaz, yoksa atla]
-    ""[span_17](start_span)"[span_17](end_span)
+    translation_prompt = (
+        f"Aşağıdaki mesajı analiz et ve kaynak dilini tespit et: \"{user_text}\"\n\n"
+        "Şu çeviri matrisi kurallarına harfiyen uy:\n"
+        "- İngilizce -> Türkçe, Almanca, Rusça\n"
+        "- Almanca -> Türkçe, Rusça\n"
+        "- Rusça -> Türkçe, Almanca\n"
+        "- Azerice veya Türkçe -> Almanca, Rusça\n\n"
+        "Çeviriler kelimesi kelimesine olmasın, C2 seviyesinde yerel deyimlerle yapılsın.\n"
+        "Çıktıyı sadece şu formatta ver:\n"
+        "🇹🇷 [Türkçe çevirisi varsa yaz, yoksa atla]\n"
+        "🇩🇪 [Almanca çevirisi varsa yaz, yoksa atla]\n"
+        "🇷🇺 [Rusça çevirisi varsa yaz, yoksa atla]"
+    )
     
     response = client.chat.completions.create(
         model=MODEL_NAME,
@@ -98,23 +96,23 @@ async def handle_message(update: Update, context: ContextTypes.DynamicContext):
             {"role": "system", "content": SYSTEM_INSTRUCTION},
             {"role": "user", "content": translation_prompt}
         ]
-    )[span_18](start_span)[span_18](end_span)
+    )[span_17](start_span)[span_17](end_span)
     
-    output_text = response.choices[0].message.content[span_19](start_span)[span_19](end_span)
+    output_text = response.choices[0].message.content[span_18](start_span)[span_18](end_span)
     if output_text and len(output_text.strip()) > 0:
-        await message.reply_text(output_text.strip())[span_20](start_span)[span_20](end_span)
+        await message.reply_text(output_text.strip())[span_19](start_span)[span_19](end_span)
 
 if __name__ == "__main__":
-    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()[span_21](start_span)[span_21](end_span)
+    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()[span_20](start_span)[span_20](end_span)
     
-    # Komut İşleyicileri (Command Handlers)
+    # Komut İşleyicileri
     app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(CommandHandler("kral", cmd_kral))
     app.add_handler(CommandHandler("sirallama", cmd_sirallama))
     app.add_handler(CommandHandler(["turkce", "rusca", "almanca"], cmd_dil))
     
-    # Mesaj İşleyici (Message Handler)
-    app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))[span_22](start_span)[span_22](end_span)
+    # Mesaj İşleyici
+    app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))[span_21](start_span)[span_21](end_span)
     
-    print("Viyana AI Bot aktif: Komutlar ve GPT-5.5 C2 Çeviri/Sohbet entegrasyonu tamamlandı.")[span_23](start_span)[span_23](end_span)
-    app.run_polling()[span_24](start_span)[span_24](end_span)
+    print("Viyana AI Bot aktif: Komutlar ve GPT-5.5 C2 Çeviri/Sohbet entegrasyonu tamamlandı.")[span_22](start_span)[span_22](end_span)
+    app.run_polling()[span_23](start_span)[span_23](end_span)
