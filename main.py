@@ -1,7 +1,7 @@
 import logging
 import random
 import re
-import httpx
+import google.generativeai as genai
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder,
@@ -11,12 +11,11 @@ from telegram.ext import (
     ContextTypes,
 )
 
-# --- TOKENLAR ---
+# --- TOKEN VE API YAPILANDIRMASI ---
 TELEGRAM_TOKEN = "8363449973:AAElwMlaNrlKJ7sh8PApYPxWb13YqrHJakU"
 GEMINI_API_KEY = "AIzaSyBB1H7YC2D6bC7oNImuGuMq7elV5w49wp4"
 
-GEMINI_MODEL = "gemini-1.5-flash"
-GEMINI_URL = f"https://generativelanguage.googleapis.com/v1/models/{GEMINI_MODEL}:generateContent"
+genai.configure(api_key=GEMINI_API_KEY)
 
 USER_SCORES = {}
 TRANSLATION_CACHE = {}
@@ -72,35 +71,24 @@ async def query_ai(prompt: str, system_prompt: str) -> str:
         return TRANSLATION_CACHE[cache_key]
 
     try:
-        url = f"{GEMINI_URL}?key={GEMINI_API_KEY.strip()}"
-        headers = {
-            "Content-Type": "application/json",
-        }
-        full_prompt = f"System Instructions:\n{system_prompt}\n\nTask:\n{prompt}"
-        data = {
-            "contents": [
-                {
-                    "parts": [{"text": full_prompt}]
-                }
-            ],
-            "generationConfig": {
-                "temperature": 0.1,
-                "maxOutputTokens": 300
-            }
-        }
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            response = await client.post(url, headers=headers, json=data)
-            if response.status_code == 200:
-                result = response.json()
-                content = result["candidates"][0]["content"]["parts"][0]["text"].strip()
-                if len(TRANSLATION_CACHE) > 500:
-                    TRANSLATION_CACHE.pop(next(iter(TRANSLATION_CACHE)))
-                TRANSLATION_CACHE[cache_key] = content
-                return content
-            logger.error(f"Gemini API Error HTTP {response.status_code}: {response.text}")
-            return ""
+        model = genai.GenerativeModel(
+            model_name="gemini-1.5-flash",
+            system_instruction=system_prompt
+        )
+        response = model.generate_content(
+            prompt,
+            generation_config=genai.types.GenerationConfig(
+                temperature=0.1,
+                max_output_tokens=300
+            )
+        )
+        content = response.text.strip()
+        if len(TRANSLATION_CACHE) > 500:
+            TRANSLATION_CACHE.pop(next(iter(TRANSLATION_CACHE)))
+        TRANSLATION_CACHE[cache_key] = content
+        return content
     except Exception as e:
-        logger.error(f"API Error: {e}")
+        logger.error(f"Gemini API Error: {e}")
         return ""
 
 def detect_language(text: str) -> str:
@@ -231,5 +219,6 @@ if __name__ == "__main__":
     
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    print("Viyana AI Gemini ile Yayında...")
+    print("Viyana AI Resmi SDK ile Yayında...")
     app.run_polling(drop_pending_updates=True)
+
