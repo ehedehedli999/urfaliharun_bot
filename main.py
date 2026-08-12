@@ -15,7 +15,7 @@ from telegram.ext import (
 TELEGRAM_TOKEN = "8363449973:AAElwMlaNrlKJ7sh8PApYPxWb13YqrHJakU"
 GEMINI_API_KEY = "AIzaSyBB1H7YC2D6bC7oNImuGuMq7elV5w49wp4"
 
-GEMINI_MODEL = "gemini-1.5-flash"
+GEMINI_MODEL = "gemini-pro"
 GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
 
 USER_SCORES = {}
