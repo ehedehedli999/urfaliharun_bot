@@ -73,7 +73,7 @@ async def query_ai(prompt: str, system_prompt: str) -> str:
 
     try:
         response = client.models.generate_content(
-            model='gemini-2.0-flash',
+            model='gemini-2.5-flash',
             contents=prompt,
             config=types.GenerateContentConfig(
                 system_instruction=system_prompt,
@@ -218,5 +218,6 @@ if __name__ == "__main__":
     
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    print("Viyana AI 2.0-Flash ile Sorunsuz Yayında...")
+    print("Viyana AI 2.5-Flash ile Sorunsuz Yayında...")
     app.run_polling(drop_pending_updates=True)
+
