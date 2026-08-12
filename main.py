@@ -33,31 +33,25 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# --- HIZLI VE KESİN ÇEVİRİ PROMPTU ---
+# --- ÖRNEKLİ (FEW-SHOT) KESİN ÇEVİRİ PROMPTU ---
 SYSTEM_TRANSLATE_PROMPT = """
-You are a lightning-fast translation engine. 
-Translate the input message directly into the two target languages.
+You are a strict translation machine. You MUST ALWAYS output BOTH target languages with their exact flag emojis. Never skip any language, even for short words like "Selam" or "Naber".
+
+EXAMPLES:
+Input: Selam
+🇷🇺 Привет
+🇩🇪 Hallo
+
+Input: Naber
+🇷🇺 Как дела?
+🇩🇪 Was gibt's?
 
 RULES:
-1. Output ONLY the two translated lines with flags. No intro, no extra text.
-2. NEVER skip any target language. Both Russian and German must be present.
-
-FORMAT:
-If input is Turkish / Azerbaijani:
-🇷🇺 [Russian]
-🇩🇪 [German]
-
-If input is Russian:
-🇹🇷 [Turkish]
-🇩🇪 [German]
-
-If input is German:
-🇹🇷 [Turkish]
-🇷🇺 [Russian]
+Output ONLY the two translated lines with flags. No extra text, no intros.
 """
 
 COMMAND_3LANG_PROMPT = """
-Sana verilen metni hızlıca 3 dilde (Türkçe, Rusça, Almanca) eksiksiz yanıtla.
+Sana verilen metni veya görevi hızlıca 3 dilde (Türkçe, Rusça, Almanca) eksiksiz yanıtla.
 Çıktı formatı KESİNLİKLE şöyle olmalı:
 🇹🇷 [Türkçe İfade]
 🇷🇺 [Rusça İfade - Kiril]
@@ -184,7 +178,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(clean_text) < 1 or "http" in text: return
 
         src_lang = detect_language(clean_text)
-        raw_translation = await query_ai(f"Translate: \"{clean_text}\"", SYSTEM_TRANSLATE_PROMPT, max_tokens=120)
+        raw_translation = await query_ai(clean_text, SYSTEM_TRANSLATE_PROMPT, max_tokens=120)
 
         if not raw_translation: return
 
@@ -223,6 +217,5 @@ if __name__ == "__main__":
     
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    print("Viyana AI - Ultra Hızlı Çeviri Modu ile Yayında...")
+    print("Viyana AI - Kusursuz ve Hızlı Mod ile Yayında...")
     app.run_polling(drop_pending_updates=True)
-
