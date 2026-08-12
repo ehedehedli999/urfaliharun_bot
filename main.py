@@ -12,7 +12,7 @@ from telegram.ext import (
 )
 
 # --- TOKENLAR ---
-TELEGRAM_TOKEN = "8363449973:AAEel1P8fp1b3eRhnbpDNM4Z6vdEbFQR8h0"
+TELEGRAM_TOKEN = "8363449973:AAElwMlaNrlKJ7sh8PApYPxWb13YqrHJakU"
 GEMINI_API_KEY = "AQ.Ab8RN6ILKAs1r5a__ka4XAaql_S4P-WobvL5uePueJxUf5zxSA"
 
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
