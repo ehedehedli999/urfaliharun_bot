@@ -11,9 +11,12 @@ from telegram.ext import (
     ContextTypes,
 )
 
-# --- TOKEN VE API YAPILANDIRMASI ---
+# --- YAPILANDIRMA ---
 TELEGRAM_TOKEN = "8363449973:AAElwMlaNrlKJ7sh8PApYPxWb13YqrHJakU"
-GEMINI_API_KEY = "AIzaSyBB1H7YC2D6bC7oNImuGuMq7elV5w49wp4"
+OPENROUTER_API_KEY = "Sk-or-v1-9e19d153ecd91a4819378854119bcff66f78f85c2af8449bd5f2b5a18c5ecde1"
+
+OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+MODEL_NAME = "deepseek/deepseek-chat"
 
 USER_SCORES = {}
 TRANSLATION_CACHE = {}
@@ -68,32 +71,38 @@ async def query_ai(prompt: str, system_prompt: str) -> str:
     if cache_key in TRANSLATION_CACHE:
         return TRANSLATION_CACHE[cache_key]
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "HTTP-Referer": "https://github.com/telegram-bot", 
+        "X-Title": "Viyana AI Bot",
+        "Content-Type": "application/json"
+    }
     
     payload = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "system_instruction": {"parts": [{"text": system_prompt}]},
-        "generationConfig": {
-            "temperature": 0.1,
-            "maxOutputTokens": 300
-        }
+        "model": MODEL_NAME,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": 0.1,
+        "max_tokens": 300
     }
 
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
-            response = await client.post(url, json=payload)
+            response = await client.post(OPENROUTER_URL, json=payload, headers=headers)
             if response.status_code == 200:
                 data = response.json()
-                content = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                content = data["choices"][0]["message"]["content"].strip()
                 if len(TRANSLATION_CACHE) > 500:
                     TRANSLATION_CACHE.pop(next(iter(TRANSLATION_CACHE)))
                 TRANSLATION_CACHE[cache_key] = content
                 return content
             else:
-                logger.error(f"API Error Status {response.status_code}: {response.text}")
+                logger.error(f"OpenRouter API Error Status {response.status_code}: {response.text}")
                 return ""
     except Exception as e:
-        logger.error(f"HTTP Request Error: {e}")
+        logger.error(f"OpenRouter Request Error: {e}")
         return ""
 
 def detect_language(text: str) -> str:
@@ -224,6 +233,6 @@ if __name__ == "__main__":
     
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    print("Viyana AI HTTP İstekleri ile Kararlı Olarak Yayında...")
+    print("Viyana AI - OpenRouter Altyapısı ile Yayında...")
     app.run_polling(drop_pending_updates=True)
 
