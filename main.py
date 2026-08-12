@@ -13,7 +13,7 @@ from telegram.ext import (
 
 # --- YAPILANDIRMA ---
 TELEGRAM_TOKEN = "8363449973:AAElwMlaNrlKJ7sh8PApYPxWb13YqrHJakU"
-OPENROUTER_API_KEY = "Sk-or-v1-9e19d153ecd91a4819378854119bcff66f78f85c2af8449bd5f2b5a18c5ecde1"
+OPENROUTER_API_KEY = "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"
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 MODEL_NAME = "deepseek/deepseek-chat"
