@@ -33,38 +33,38 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# --- ÇEVİRİ PROMPTU (Kesinleştirilmiş / Tembellik Önleyici) ---
+# --- HIZLI VE KESİN ÇEVİRİ PROMPTU ---
 SYSTEM_TRANSLATE_PROMPT = """
-You are an uncompromising, strict translation machine. 
-Your task is to translate chat messages into the required target languages.
+You are a lightning-fast translation engine. 
+Translate the input message directly into the two target languages.
 
-CRITICAL MANDATORY RULES:
-1. You MUST ALWAYS output BOTH target language lines. NEVER skip any language, even for very short texts or slang.
-2. Output format MUST strictly follow the flags below. No extra text, no explanations, no introductory words.
+RULES:
+1. Output ONLY the two translated lines with flags. No intro, no extra text.
+2. NEVER skip any target language. Both Russian and German must be present.
 
-EXACT FORMAT TEMPLATES:
+FORMAT:
 If input is Turkish / Azerbaijani:
-🇷🇺 [Russian Translation here]
-🇩🇪 [German Translation here]
+🇷🇺 [Russian]
+🇩🇪 [German]
 
 If input is Russian:
-🇹🇷 [Turkish Translation here]
-🇩🇪 [German Translation here]
+🇹🇷 [Turkish]
+🇩🇪 [German]
 
 If input is German:
-🇹🇷 [Turkish Translation here]
-🇷🇺 [Russian Translation here]
+🇹🇷 [Turkish]
+🇷🇺 [Russian]
 """
 
 COMMAND_3LANG_PROMPT = """
-Sana verilen metni veya görevi 3 dilde (Türkçe, Rusça, Almanca) yanıtla.
+Sana verilen metni hızlıca 3 dilde (Türkçe, Rusça, Almanca) eksiksiz yanıtla.
 Çıktı formatı KESİNLİKLE şöyle olmalı:
 🇹🇷 [Türkçe İfade]
 🇷🇺 [Rusça İfade - Kiril]
 🇩🇪 [Almanca İfade]
 """
 
-async def query_ai(prompt: str, system_prompt: str, max_tokens: int = 180) -> str:
+async def query_ai(prompt: str, system_prompt: str, max_tokens: int = 150) -> str:
     cache_key = f"{system_prompt[:10]}:{prompt}"
     if cache_key in TRANSLATION_CACHE:
         return TRANSLATION_CACHE[cache_key]
@@ -82,12 +82,12 @@ async def query_ai(prompt: str, system_prompt: str, max_tokens: int = 180) -> st
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt}
         ],
-        "temperature": 0.1,
+        "temperature": 0.0,
         "max_tokens": max_tokens
     }
 
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=6.0) as client:
             response = await client.post(OPENROUTER_URL, json=payload, headers=headers)
             if response.status_code == 200:
                 data = response.json()
@@ -145,13 +145,13 @@ async def cmd_toggle_lang(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     p = "Hakkımda metni yaz: Ben Viyana Ai Yapay zeka botuyum. Ehed tarafından tasarlandım."
-    ans = await query_ai(p, COMMAND_3LANG_PROMPT, max_tokens=200)
+    ans = await query_ai(p, COMMAND_3LANG_PROMPT, max_tokens=250)
     if ans: await update.message.reply_text(ans)
 
 async def cmd_kral(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user.first_name
-    p = f"Günün Kralı ilan edilen kişi: {user}. Onun için kısa bir övgü fermanı yaz."
-    ans = await query_ai(p, COMMAND_3LANG_PROMPT, max_tokens=200)
+    p = f"Günün Kralı ilan edilen kişi: {user}. Onun için coşkulu ama kısa bir övgü fermanı yaz."
+    ans = await query_ai(p, COMMAND_3LANG_PROMPT, max_tokens=250)
     if ans: await update.message.reply_text(ans)
 
 async def cmd_siralama(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -180,12 +180,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         add_point(chat_id, user)
 
         clean_text = re.sub(r'@\w+', '', text).strip()
-        words = clean_text.split()
         
-        if len(words) < 2 or "http" in text: return
+        if len(clean_text) < 1 or "http" in text: return
 
         src_lang = detect_language(clean_text)
-        raw_translation = await query_ai(f"Translate: \"{clean_text}\"", SYSTEM_TRANSLATE_PROMPT, max_tokens=180)
+        raw_translation = await query_ai(f"Translate: \"{clean_text}\"", SYSTEM_TRANSLATE_PROMPT, max_tokens=120)
 
         if not raw_translation: return
 
@@ -224,5 +223,6 @@ if __name__ == "__main__":
     
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    print("Viyana AI - Kesin Çeviri Modu ile Yayında...")
+    print("Viyana AI - Ultra Hızlı Çeviri Modu ile Yayında...")
     app.run_polling(drop_pending_updates=True)
+
