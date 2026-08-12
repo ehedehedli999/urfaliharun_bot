@@ -33,32 +33,36 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# --- ÖRNEKLİ (FEW-SHOT) KESİN ÇEVİRİ PROMPTU ---
+# --- ANA DİL SEVİYESİNDE DOĞRU VE HIZLI ÇEVİRİ PROMPTU ---
 SYSTEM_TRANSLATE_PROMPT = """
-You are a strict translation machine. You MUST ALWAYS output BOTH target languages with their exact flag emojis. Never skip any language, even for short words like "Selam" or "Naber".
+You are a native chat translator. Translate daily slang, colloquial words, and affectionate terms (like "canım" -> dear/honey, NEVER mom) accurately and naturally as a native speaker.
 
 EXAMPLES:
 Input: Selam
 🇷🇺 Привет
 🇩🇪 Hallo
 
-Input: Naber
-🇷🇺 Как дела?
-🇩🇪 Was gibt's?
+Input: Nasılsın canım
+🇷🇺 Как дела, дорогая?
+🇩🇪 Wie geht's, Schatz?
+
+Input: Tamam
+🇷🇺 Окей
+🇩🇪 Okay
 
 RULES:
 Output ONLY the two translated lines with flags. No extra text, no intros.
 """
 
 COMMAND_3LANG_PROMPT = """
-Sana verilen metni veya görevi hızlıca 3 dilde (Türkçe, Rusça, Almanca) eksiksiz yanıtla.
+Sana verilen metni hızlıca 3 dilde (Türkçe, Rusça, Almanca) eksiksiz yanıtla.
 Çıktı formatı KESİNLİKLE şöyle olmalı:
 🇹🇷 [Türkçe İfade]
 🇷🇺 [Rusça İfade - Kiril]
 🇩🇪 [Almanca İfade]
 """
 
-async def query_ai(prompt: str, system_prompt: str, max_tokens: int = 150) -> str:
+async def query_ai(prompt: str, system_prompt: str, max_tokens: int = 100) -> str:
     cache_key = f"{system_prompt[:10]}:{prompt}"
     if cache_key in TRANSLATION_CACHE:
         return TRANSLATION_CACHE[cache_key]
@@ -81,7 +85,7 @@ async def query_ai(prompt: str, system_prompt: str, max_tokens: int = 150) -> st
     }
 
     try:
-        async with httpx.AsyncClient(timeout=6.0) as client:
+        async with httpx.AsyncClient(timeout=5.0) as client:
             response = await client.post(OPENROUTER_URL, json=payload, headers=headers)
             if response.status_code == 200:
                 data = response.json()
@@ -139,13 +143,13 @@ async def cmd_toggle_lang(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     p = "Hakkımda metni yaz: Ben Viyana Ai Yapay zeka botuyum. Ehed tarafından tasarlandım."
-    ans = await query_ai(p, COMMAND_3LANG_PROMPT, max_tokens=250)
+    ans = await query_ai(p, COMMAND_3LANG_PROMPT, max_tokens=200)
     if ans: await update.message.reply_text(ans)
 
 async def cmd_kral(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user.first_name
     p = f"Günün Kralı ilan edilen kişi: {user}. Onun için coşkulu ama kısa bir övgü fermanı yaz."
-    ans = await query_ai(p, COMMAND_3LANG_PROMPT, max_tokens=250)
+    ans = await query_ai(p, COMMAND_3LANG_PROMPT, max_tokens=200)
     if ans: await update.message.reply_text(ans)
 
 async def cmd_siralama(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -178,7 +182,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(clean_text) < 1 or "http" in text: return
 
         src_lang = detect_language(clean_text)
-        raw_translation = await query_ai(clean_text, SYSTEM_TRANSLATE_PROMPT, max_tokens=120)
+        raw_translation = await query_ai(clean_text, SYSTEM_TRANSLATE_PROMPT, max_tokens=90)
 
         if not raw_translation: return
 
@@ -217,5 +221,5 @@ if __name__ == "__main__":
     
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    print("Viyana AI - Kusursuz ve Hızlı Mod ile Yayında...")
+    print("Viyana AI - Ultra Hızlı ve Doğru Çeviri Modu ile Yayında...")
     app.run_polling(drop_pending_updates=True)
