@@ -1,8 +1,7 @@
 import logging
 import random
 import re
-from google import genai
-from google.genai import types
+import httpx
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder,
@@ -15,8 +14,6 @@ from telegram.ext import (
 # --- TOKEN VE API YAPILANDIRMASI ---
 TELEGRAM_TOKEN = "8363449973:AAElwMlaNrlKJ7sh8PApYPxWb13YqrHJakU"
 GEMINI_API_KEY = "AIzaSyBB1H7YC2D6bC7oNImuGuMq7elV5w49wp4"
-
-client = genai.Client(api_key=GEMINI_API_KEY)
 
 USER_SCORES = {}
 TRANSLATION_CACHE = {}
@@ -71,23 +68,32 @@ async def query_ai(prompt: str, system_prompt: str) -> str:
     if cache_key in TRANSLATION_CACHE:
         return TRANSLATION_CACHE[cache_key]
 
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+    
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "system_instruction": {"parts": [{"text": system_prompt}]},
+        "generationConfig": {
+            "temperature": 0.1,
+            "maxOutputTokens": 300
+        }
+    }
+
     try:
-        response = client.models.generate_content(
-            model='gemini-2.5-flash',
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                system_instruction=system_prompt,
-                temperature=0.1,
-                max_output_tokens=300
-            )
-        )
-        content = response.text.strip()
-        if len(TRANSLATION_CACHE) > 500:
-            TRANSLATION_CACHE.pop(next(iter(TRANSLATION_CACHE)))
-        TRANSLATION_CACHE[cache_key] = content
-        return content
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.post(url, json=payload)
+            if response.status_code == 200:
+                data = response.json()
+                content = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+                if len(TRANSLATION_CACHE) > 500:
+                    TRANSLATION_CACHE.pop(next(iter(TRANSLATION_CACHE)))
+                TRANSLATION_CACHE[cache_key] = content
+                return content
+            else:
+                logger.error(f"API Error Status {response.status_code}: {response.text}")
+                return ""
     except Exception as e:
-        logger.error(f"Gemini API Error: {e}")
+        logger.error(f"HTTP Request Error: {e}")
         return ""
 
 def detect_language(text: str) -> str:
@@ -218,6 +224,6 @@ if __name__ == "__main__":
     
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    print("Viyana AI 2.5-Flash ile Sorunsuz Yayında...")
+    print("Viyana AI HTTP İstekleri ile Kararlı Olarak Yayında...")
     app.run_polling(drop_pending_updates=True)
 
