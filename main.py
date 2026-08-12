@@ -13,10 +13,10 @@ from telegram.ext import (
 
 # --- TOKENLAR ---
 TELEGRAM_TOKEN = "8363449973:AAElwMlaNrlKJ7sh8PApYPxWb13YqrHJakU"
-GEMINI_API_KEY = "AQ.Ab8RN6ILKAs1r5a__ka4XAaql_S4P-WobvL5uePueJxUf5zxSA"
+GEMINI_API_KEY = "AIzaSyBB1H7YC2D6bC7oNImuGuMq7elV5w49wp4"
 
-GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
 GEMINI_MODEL = "gemini-1.5-flash"
+GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
 
 USER_SCORES = {}
 TRANSLATION_CACHE = {}
@@ -72,24 +72,27 @@ async def query_ai(prompt: str, system_prompt: str) -> str:
         return TRANSLATION_CACHE[cache_key]
 
     try:
+        url = f"{GEMINI_URL}?key={GEMINI_API_KEY.strip()}"
         headers = {
-            "Authorization": f"Bearer {GEMINI_API_KEY.strip()}",
             "Content-Type": "application/json",
         }
+        full_prompt = f"System Instructions:\n{system_prompt}\n\nTask:\n{prompt}"
         data = {
-            "model": GEMINI_MODEL,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": prompt},
+            "contents": [
+                {
+                    "parts": [{"text": full_prompt}]
+                }
             ],
-            "temperature": 0.1,
-            "max_tokens": 300
+            "generationConfig": {
+                "temperature": 0.1,
+                "maxOutputTokens": 300
+            }
         }
         async with httpx.AsyncClient(timeout=15.0) as client:
-            response = await client.post(GEMINI_URL, headers=headers, json=data)
+            response = await client.post(url, headers=headers, json=data)
             if response.status_code == 200:
                 result = response.json()
-                content = result["choices"][0]["message"]["content"].strip()
+                content = result["candidates"][0]["content"]["parts"][0]["text"].strip()
                 if len(TRANSLATION_CACHE) > 500:
                     TRANSLATION_CACHE.pop(next(iter(TRANSLATION_CACHE)))
                 TRANSLATION_CACHE[cache_key] = content
