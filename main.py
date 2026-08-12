@@ -12,13 +12,15 @@ from telegram.ext import (
 )
 
 # --- TOKENLAR ---
-TELEGRAM_TOKEN = "8363449973:AAElwMlaNrlKJ7sh8PApYPxWb13YqrHJakU"
-CEREBRAS_API_KEY = "csk-2nr3xkmt8x9eyfkc9hhc2nyrwf5nrx8kdt4pn8hwdjvewfxv"
+TELEGRAM_TOKEN = "8363449973:AAEel1P8fp1b3eRhnbpDNM4Z6vdEbFQR8h0"
+GEMINI_API_KEY = "AQ.Ab8RN6ILKAs1r5a__ka4XAaql_S4P-WobvL5uePueJxUf5zxSA"
 
-CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions"
-CEREBRAS_MODEL = "llama3.1-8b"
+GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+GEMINI_MODEL = "gemini-1.5-flash"
 
 USER_SCORES = {}
+TRANSLATION_CACHE = {}
+
 LANG_STATUS = {
     "tr": True,
     "ru": True,
@@ -31,7 +33,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# --- TAM VE KESİNLİKLE EKSİKSİZ ÇEVİRİ PROMPTU ---
+# --- ÇEVİRİ PROMPTU ---
 SYSTEM_TRANSLATE_PROMPT = """
 You are an uncompromising translation engine. 
 Your task is to translate short chat messages into target languages.
@@ -64,14 +66,18 @@ Sana verilen metni veya görevi 3 dilde (Türkçe, Rusça, Almanca) yanıtla.
 🇩🇪 [Almanca İfade]
 """
 
-async def query_cerebras(prompt: str, system_prompt: str) -> str:
+async def query_ai(prompt: str, system_prompt: str) -> str:
+    cache_key = f"{system_prompt[:10]}:{prompt}"
+    if cache_key in TRANSLATION_CACHE:
+        return TRANSLATION_CACHE[cache_key]
+
     try:
         headers = {
-            "Authorization": f"Bearer {CEREBRAS_API_KEY.strip()}",
+            "Authorization": f"Bearer {GEMINI_API_KEY.strip()}",
             "Content-Type": "application/json",
         }
         data = {
-            "model": CEREBRAS_MODEL,
+            "model": GEMINI_MODEL,
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt},
@@ -80,11 +86,15 @@ async def query_cerebras(prompt: str, system_prompt: str) -> str:
             "max_tokens": 300
         }
         async with httpx.AsyncClient(timeout=15.0) as client:
-            response = await client.post(CEREBRAS_URL, headers=headers, json=data)
+            response = await client.post(GEMINI_URL, headers=headers, json=data)
             if response.status_code == 200:
                 result = response.json()
-                return result["choices"][0]["message"]["content"].strip()
-            logger.error(f"Cerebras API Error HTTP {response.status_code}: {response.text}")
+                content = result["choices"][0]["message"]["content"].strip()
+                if len(TRANSLATION_CACHE) > 500:
+                    TRANSLATION_CACHE.pop(next(iter(TRANSLATION_CACHE)))
+                TRANSLATION_CACHE[cache_key] = content
+                return content
+            logger.error(f"Gemini API Error HTTP {response.status_code}: {response.text}")
             return ""
     except Exception as e:
         logger.error(f"API Error: {e}")
@@ -108,7 +118,7 @@ def add_point(chat_id: int, user):
     USER_SCORES[chat_id][uid]["messages"] += 1
     USER_SCORES[chat_id][uid]["name"] = user.first_name
 
-# --- DİL AÇMA / KAPATMA KOMUTLARI ---
+# --- KOMUTLAR ---
 async def cmd_toggle_lang(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text: return
     cmd = update.message.text.split()[0].replace("/", "").split("@")[0].lower()
@@ -130,22 +140,21 @@ async def cmd_toggle_lang(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     await update.message.reply_text(msg)
 
-# --- EĞLENCE KOMUTLARI ---
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     p = "Hakkımda metni yaz: Ben Viyana Ai Yapay zeka botuyum. Ehed tarafından tasarlandım."
-    ans = await query_cerebras(p, COMMAND_3LANG_PROMPT)
+    ans = await query_ai(p, COMMAND_3LANG_PROMPT)
     if ans: await update.message.reply_text(ans)
 
 async def cmd_burc(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = " ".join(context.args) if context.args else "genel"
     p = f"Kullanıcı için ({args}) burcu/fal hakkında eğlenceli ve kısa bir yorum yap."
-    ans = await query_cerebras(p, COMMAND_3LANG_PROMPT)
+    ans = await query_ai(p, COMMAND_3LANG_PROMPT)
     if ans: await update.message.reply_text(ans)
 
 async def cmd_kral(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user.first_name
     p = f"Günün Kralı ilan edilen kişi: {user}. Onun için kısa bir övgü fermanı yaz."
-    ans = await query_cerebras(p, COMMAND_3LANG_PROMPT)
+    ans = await query_ai(p, COMMAND_3LANG_PROMPT)
     if ans: await update.message.reply_text(ans)
 
 async def cmd_siralama(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -175,10 +184,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         clean_text = re.sub(r'@\w+', '', text).strip()
         words = clean_text.split()
-        if len(words) < 1 or "http" in text: return
+        
+        if len(words) < 2 or "http" in text: return
 
         src_lang = detect_language(clean_text)
-        raw_translation = await query_cerebras(f"Translate: \"{clean_text}\"", SYSTEM_TRANSLATE_PROMPT)
+        raw_translation = await query_ai(f"Translate: \"{clean_text}\"", SYSTEM_TRANSLATE_PROMPT)
 
         if not raw_translation: return
 
@@ -189,12 +199,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             line_clean = line.strip()
             if not line_clean: continue
 
-            # 1. Kaynak dili filtrele
             if src_lang == "tr" and line_clean.startswith("🇹🇷"): continue
             if src_lang == "ru" and line_clean.startswith("🇷🇺"): continue
             if src_lang == "de" and line_clean.startswith("🇩🇪"): continue
 
-            # 2. Kapalı dili filtrele
             if not LANG_STATUS["tr"] and line_clean.startswith("🇹🇷"): continue
             if not LANG_STATUS["ru"] and line_clean.startswith("🇷🇺"): continue
             if not LANG_STATUS["de"] and line_clean.startswith("🇩🇪"): continue
@@ -220,5 +228,5 @@ if __name__ == "__main__":
     
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    print("Viyana AI Güncellenmiş Kod İle Yayında...")
+    print("Viyana AI Gemini ile Yayında...")
     app.run_polling(drop_pending_updates=True)
