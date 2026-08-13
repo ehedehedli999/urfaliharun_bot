@@ -1,4 +1,5 @@
 import os
+import json
 import logging
 
 from telegram import Update
@@ -16,7 +17,6 @@ from openai import OpenAI
 # AYARLAR
 # ============================================================
 
-# Anahtarlar koda sabitlendi
 GROQ_API_KEY = "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"
 TELEGRAM_BOT_TOKEN = "8363449973:AAElwMlaNrlKJ7sh8PApYPxWb13YqrHJakU"
 
@@ -52,183 +52,95 @@ MODEL_NAME = "llama-3.1-8b-instant"
 
 
 # ============================================================
-# ÇEVİRİ TALİMATI
+# ÇEVİRİ TALİMATI (JSON FORMATI İÇİN)
 # ============================================================
 
-SYSTEM_PROMPT = """
-Sen Viyana AI otomatik çeviri botusun.
+SYSTEM_PROMPT = """Sen Viyana AI otomatik çeviri botusun. Görevin, gelen metnin dilini doğru tespit etmek ve metni Türkçe, Almanca ve Rusçaya çevirmektir.
+Kullanıcılar Türkçe karakter kullanmadan (örn: "gunaydin", "nasilsiniz") yazabilirler, bunları anlamsal olarak TÜRKÇE (tr) veya AZERİCE (az) olarak doğru tespit et.
 
-GÖREVİN SADECE ÇEVİRİ YAPMAKTIR.
+Çıktın KESİNLİKLE sadece aşağıdaki JSON formatında olmalıdır. Başka hiçbir açıklama, sohbet veya not yazma:
 
-ÖNCE GELEN MESAJIN KAYNAK DİLİNİ TESPİT ET.
-
-ÇOK ÖNEMLİ ÇEVİRİ KURALI:
-
-1. AZERİCE GELİRSE:
-   SADECE şu üç dile çevir:
-   🇹🇷 Türkçe
-   🇩🇪 Almanca
-   🇷🇺 Rusça
-
-2. İNGİLİZCE GELİRSE:
-   SADECE şu üç dile çevir:
-   🇹🇷 Türkçe
-   🇩🇪 Almanca
-   🇷🇺 Rusça
-
-3. TÜRKÇE GELİRSE:
-   SADECE:
-   🇩🇪 Almanca
-   🇷🇺 Rusça
-
-4. ALMANCA GELİRSE:
-   SADECE:
-   🇹🇷 Türkçe
-   🇷🇺 Rusça
-
-5. RUSÇA GELİRSE:
-   SADECE:
-   🇹🇷 Türkçe
-   🇩🇪 Almanca
-
-KAYNAK DİLİ ASLA TEKRAR ÇEVİRME.
-
-ÖRNEK:
-
-Türkçe:
-"Merhaba nasılsın?"
-
-Cevap:
-🇩🇪 Hallo, wie geht es dir?
-🇷🇺 Привет, как дела?
-
-ASLA:
-🇹🇷 Merhaba nasılsın?
-yazma.
-
----
-
-Rusça:
-"Как дела?"
-
-Cevap:
-🇹🇷 Nasılsın?
-🇩🇪 Wie geht es dir?
-
-ASLA:
-🇷🇺 Как дела?
-yazma.
-
----
-
-Almanca:
-"Wie geht es dir?"
-
-Cevap:
-🇹🇷 Nasılsın?
-🇷🇺 Как дела?
-
-ASLA:
-🇩🇪 Wie geht es dir?
-yazma.
-
----
-
-Azerice:
-"Necəsən?"
-
-Cevap:
-🇹🇷 Nasılsın?
-🇩🇪 Wie geht es dir?
-🇷🇺 Как дела?
-
----
-
-İngilizce:
-"How are you?"
-
-Cevap:
-🇹🇷 Nasılsın?
-🇩🇪 Wie geht es dir?
-🇷🇺 Как дела?
-
-ÇEVİRİ KALİTESİ:
-
-- Anlamı kesinlikle değiştirme.
-- Kelime kelime mekanik çeviri yapma.
-- Doğal ve akıcı çeviri yap.
-- Deyimleri hedef dildeki doğal karşılığıyla aktar.
-- Argo ve günlük konuşma dilini koru.
-- Küfür varsa tonunu ve anlamını koru.
-- İsimleri değiştirme.
-- Sayıları değiştirme.
-- Tarihleri değiştirme.
-- Özel isimleri değiştirme.
-- Kişi zamirlerini doğru koru.
-- Cinsiyet bilgisini mümkün olduğunca doğru koru.
-- Mesajın duygusunu ve tonunu koru.
-- Ekstra açıklama yapma.
-- Kullanıcıya cevap verme.
-- Sohbet etme.
-- Sadece çevirileri üret.
-
-ÇOK ÖNEMLİ:
-
-Eğer mesaj Türkçeyse Türkçe satırı YAZMA.
-
-Eğer mesaj Almancaysa Almanca satırı YAZMA.
-
-Eğer mesaj Rusçaysa Rusça satırı YAZMA.
-
-Eğer mesaj Azericeyse üç dili de yaz.
-
-Eğer mesaj İngilizceyse üç dili de yaz.
-
-SADECE gerekli bayrakları ve çevirileri yaz.
-
-Format:
-
-🇹🇷 Türkçe çeviri
-🇩🇪 Almanca çeviri
-🇷🇺 Rusça çeviri
-
-Gerekmeyen satırları kesinlikle yazma.
+{
+  "detected_lang": "tr", 
+  "tr": "Türkçe çeviri metni",
+  "de": "Almanca çeviri metni",
+  "ru": "Rusça çeviri metni"
+}
 """
 
 
 # ============================================================
-# ÇEVİRİ FONKSİYONU
+# ÇEVİRİ FONKSİYONU VE FİLTRELEME MANTIĞI
 # ============================================================
 
 def translate_text(text: str) -> str:
+    try:
+        response = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[
+                {
+                    "role": "system",
+                    "content": SYSTEM_PROMPT,
+                },
+                {
+                    "role": "user",
+                    "content": text,
+                },
+            ],
+            # JSON formatında dönmeye zorluyoruz
+            response_format={"type": "json_object"},
+            max_tokens=500,
+            temperature=0.0,
+        )
 
-    response = client.chat.completions.create(
-        model=MODEL_NAME,
+        if not response.choices:
+            return ""
 
-        messages=[
-            {
-                "role": "system",
-                "content": SYSTEM_PROMPT,
-            },
-            {
-                "role": "user",
-                "content": text,
-            },
-        ],
+        content = response.choices[0].message.content
 
-        max_tokens=500,
-        temperature=0.0,
-    )
+        if not content:
+            return ""
 
-    if not response.choices:
+        # JSON verisini Python sözlüğüne çevir
+        data = json.loads(content)
+
+        detected = data.get("detected_lang", "").lower()
+        tr_text = data.get("tr", "")
+        de_text = data.get("de", "")
+        ru_text = data.get("ru", "")
+
+        result_lines = []
+
+        # ====================================================
+        # HANGİ DİLLERİN GÖSTERİLECEĞİNE PYTHON KARAR VERİYOR
+        # ====================================================
+        if detected in ["tr", "turkish", "türkçe"]:
+            # Türkçe ise sadece Almanca ve Rusça
+            if de_text: result_lines.append(f"🇩🇪 {de_text}")
+            if ru_text: result_lines.append(f"🇷🇺 {ru_text}")
+
+        elif detected in ["de", "german", "almanca"]:
+            # Almanca ise sadece Türkçe ve Rusça
+            if tr_text: result_lines.append(f"🇹🇷 {tr_text}")
+            if ru_text: result_lines.append(f"🇷🇺 {ru_text}")
+
+        elif detected in ["ru", "russian", "rusça"]:
+            # Rusça ise sadece Türkçe ve Almanca
+            if tr_text: result_lines.append(f"🇹🇷 {tr_text}")
+            if de_text: result_lines.append(f"🇩🇪 {de_text}")
+
+        else:
+            # Azerice (az), İngilizce (en) veya diğer diller için 3 dil gösterilir
+            if tr_text: result_lines.append(f"🇹🇷 {tr_text}")
+            if de_text: result_lines.append(f"🇩🇪 {de_text}")
+            if ru_text: result_lines.append(f"🇷🇺 {ru_text}")
+
+        # Listeyi alt alta metin haline getirip döndür
+        return "\n".join(result_lines)
+
+    except Exception as e:
+        logger.error("API veya JSON Ayrıştırma hatası: %s", e)
         return ""
-
-    content = response.choices[0].message.content
-
-    if not content:
-        return ""
-
-    return content.strip()
 
 
 # ============================================================
@@ -255,29 +167,19 @@ async def handle_message(
 
     # Çok uzun mesajları ekonomik kullanım için engelle
     if len(text) > 2000:
-
         await message.reply_text(
             "⚠️ Mesaj çok uzun olduğu için çevrilmedi."
         )
-
         return
 
     try:
-
         translated = translate_text(text)
 
         if translated:
-
-            await message.reply_text(
-                translated
-            )
+            await message.reply_text(translated)
 
     except Exception as e:
-
-        logger.error(
-            "Çeviri hatası: %s",
-            e,
-        )
+        logger.error("Mesaj gönderme hatası: %s", e)
 
 
 # ============================================================
@@ -292,7 +194,6 @@ def main():
         .build()
     )
 
-    # SADECE OTOMATİK ÇEVİRİ
     app.add_handler(
         MessageHandler(
             filters.TEXT & ~filters.COMMAND,
@@ -302,16 +203,15 @@ def main():
 
     print("")
     print("==========================================")
-    print("🤖 VIYANA AI")
+    print("🤖 VIYANA AI (GELİŞMİŞ JSON MODU)")
     print("==========================================")
     print("🌍 OTOMATİK ÇEVİRİ: AKTİF")
-    print("🇦🇿 Azerice → 3 dil")
-    print("🇬🇧 İngilizce → 3 dil")
+    print("⚙️ Filtreleme: PYTHON SİSTEMİ")
+    print("🇦🇿 Azerice/İngilizce → 3 dil")
     print("🇹🇷 Türkçe → Almanca + Rusça")
     print("🇩🇪 Almanca → Türkçe + Rusça")
     print("🇷🇺 Rusça → Türkçe + Almanca")
     print("🧠 MODEL:", MODEL_NAME)
-    print("🪙 MAX TOKEN: 500")
     print("==========================================")
     print("🚀 BOT BAŞLATILIYOR...")
     print("")
@@ -325,3 +225,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
