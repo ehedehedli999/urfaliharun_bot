@@ -52,21 +52,21 @@ MODEL_NAME = "llama-3.1-8b-instant"
 
 
 # ============================================================
-# ÇEVİRİ TALİMATI (GELİŞTİRİLMİŞ DOĞAL ÇEVİRİ PROMPTU)
+# BİREBİR SADIK VE C2 ÇEVİRİ TALİMATI
 # ============================================================
 
-SYSTEM_PROMPT = """Sen Viyana AI profesyonel sohbet çevirmenisin. Görevin, gelen Telegram mesajının dilini doğru tespit etmek ve mesajı Türkçe, Almanca ve Rusçaya kusursuz bir şekilde çevirmektir.
-Kullanıcılar Türkçe karakter kullanmadan (örn: "gunaydin", "nasilsiniz"), argo, deyim veya günlük sokak diliyle yazabilirler.
+SYSTEM_PROMPT = """Sen metne tamamen sadık kalan, asla kelime veya anlam uydurmayan, C2 seviyesinde anadili gibi konuşan profesyonel bir çeviri motorusun. 
 
-ÇOK ÖNEMLİ KURALLAR:
-1. Asla kelimesi kelimesine (robotik) çeviri yapma! Deyimleri, argoları, şakaları ve günlük konuşmaları hedef dildeki en doğal, akıcı ve günlük karşılığıyla çevir.
-2. Çıktın KESİNLİKLE sadece aşağıdaki JSON formatında olmalıdır. Başka hiçbir açıklama, sohbet veya not yazma:
+KESİN KURALLAR:
+1. Asla metne kendi kafandan veda (örn: "Пока", "Bis bald"), selam veya ek sohbet cümleleri EKLEME. 
+2. Kullanıcı ne yazdıysa (özel isimler, etiketler, argo, kısa ifadeler veya günlük sözler) dışına çıkmadan, tam olarak ne yazıldıysa onu hedef dildeki en doğal, akıcı ve C2 seviyesindeki insan tonuyla çevir. Ne eksik ne fazla!
+3. Çıktın KESİNLİKLE sadece aşağıdaki JSON formatında olmalıdır. Başka hiçbir açıklama yazma:
 
 {
   "detected_lang": "tr", 
-  "tr": "Türkçe doğal çeviri metni",
-  "de": "Almanca doğal çeviri metni",
-  "ru": "Rusça doğal çeviri metni"
+  "tr": "Türkçe çeviri",
+  "de": "Almanca çeviri",
+  "ru": "Rusça çeviri"
 }
 """
 
@@ -89,10 +89,9 @@ def translate_text(text: str) -> str:
                     "content": text,
                 },
             ],
-            # JSON formatında dönmeye zorluyoruz
             response_format={"type": "json_object"},
-            max_tokens=500,
-            temperature=0.3, # Doğal ve akıcı konuşma çevirisi için optimize edildi
+            max_tokens=400,
+            temperature=0.0,  # Uydurmayı ve hayal görmeyi %100 sıfırlar
         )
 
         if not response.choices:
@@ -103,7 +102,6 @@ def translate_text(text: str) -> str:
         if not content:
             return ""
 
-        # JSON verisini Python sözlüğüne çevir
         data = json.loads(content)
 
         detected = data.get("detected_lang", "").lower()
@@ -117,27 +115,22 @@ def translate_text(text: str) -> str:
         # HANGİ DİLLERİN GÖSTERİLECEĞİNE PYTHON KARAR VERİYOR
         # ====================================================
         if detected in ["tr", "turkish", "türkçe", "az", "azerice"]:
-            # Türkçe/Azerice ise sadece Almanca ve Rusça
             if de_text: result_lines.append(f"🇩🇪 {de_text}")
             if ru_text: result_lines.append(f"🇷🇺 {ru_text}")
 
         elif detected in ["de", "german", "almanca"]:
-            # Almanca ise sadece Türkçe ve Rusça
             if tr_text: result_lines.append(f"🇹🇷 {tr_text}")
             if ru_text: result_lines.append(f"🇷🇺 {ru_text}")
 
         elif detected in ["ru", "russian", "rusça"]:
-            # Rusça ise sadece Türkçe ve Almanca
             if tr_text: result_lines.append(f"🇹🇷 {tr_text}")
             if de_text: result_lines.append(f"🇩🇪 {de_text}")
 
         else:
-            # Diğer diller için 3 dil gösterilir
             if tr_text: result_lines.append(f"🇹🇷 {tr_text}")
             if de_text: result_lines.append(f"🇩🇪 {de_text}")
             if ru_text: result_lines.append(f"🇷🇺 {ru_text}")
 
-        # Listeyi alt alta metin haline getirip döndür
         return "\n".join(result_lines)
 
     except Exception as e:
@@ -167,7 +160,6 @@ async def handle_message(
     if not text:
         return
 
-    # Çok uzun mesajları ekonomik kullanım için engelle
     if len(text) > 2000:
         await message.reply_text(
             "⚠️ Mesaj çok uzun olduğu için çevrilmedi."
@@ -205,13 +197,10 @@ def main():
 
     print("")
     print("==========================================")
-    print("🤖 VIYANA AI (GELİŞMİŞ DOĞAL ÇEVİRİ MODU)")
+    print("🤖 VIYANA AI (BİREBİR SADIK C2 MODU)")
     print("==========================================")
     print("🌍 OTOMATİK ÇEVİRİ: AKTİF")
-    print("⚙️ Filtreleme: PYTHON SİSTEMİ")
-    print("🇦🇿 Azerice/Türkçe → Almanca + Rusça")
-    print("🇩🇪 Almanca → Türkçe + Rusça")
-    print("🇷🇺 Rusça → Türkçe + Almanca")
+    print("⚙️ Sıcaklık: 0.0 (Asla Uydurmaz)")
     print("🧠 MODEL:", MODEL_NAME)
     print("==========================================")
     print("🚀 BOT BAŞLATILIYOR...")
