@@ -52,19 +52,21 @@ MODEL_NAME = "llama-3.1-8b-instant"
 
 
 # ============================================================
-# ÇEVİRİ TALİMATI (JSON FORMATI İÇİN)
+# ÇEVİRİ TALİMATI (GELİŞTİRİLMİŞ DOĞAL ÇEVİRİ PROMPTU)
 # ============================================================
 
-SYSTEM_PROMPT = """Sen Viyana AI otomatik çeviri botusun. Görevin, gelen metnin dilini doğru tespit etmek ve metni Türkçe, Almanca ve Rusçaya çevirmektir.
-Kullanıcılar Türkçe karakter kullanmadan (örn: "gunaydin", "nasilsiniz") yazabilirler, bunları anlamsal olarak TÜRKÇE (tr) veya AZERİCE (az) olarak doğru tespit et.
+SYSTEM_PROMPT = """Sen Viyana AI profesyonel sohbet çevirmenisin. Görevin, gelen Telegram mesajının dilini doğru tespit etmek ve mesajı Türkçe, Almanca ve Rusçaya kusursuz bir şekilde çevirmektir.
+Kullanıcılar Türkçe karakter kullanmadan (örn: "gunaydin", "nasilsiniz"), argo, deyim veya günlük sokak diliyle yazabilirler.
 
-Çıktın KESİNLİKLE sadece aşağıdaki JSON formatında olmalıdır. Başka hiçbir açıklama, sohbet veya not yazma:
+ÇOK ÖNEMLİ KURALLAR:
+1. Asla kelimesi kelimesine (robotik) çeviri yapma! Deyimleri, argoları, şakaları ve günlük konuşmaları hedef dildeki en doğal, akıcı ve günlük karşılığıyla çevir.
+2. Çıktın KESİNLİKLE sadece aşağıdaki JSON formatında olmalıdır. Başka hiçbir açıklama, sohbet veya not yazma:
 
 {
   "detected_lang": "tr", 
-  "tr": "Türkçe çeviri metni",
-  "de": "Almanca çeviri metni",
-  "ru": "Rusça çeviri metni"
+  "tr": "Türkçe doğal çeviri metni",
+  "de": "Almanca doğal çeviri metni",
+  "ru": "Rusça doğal çeviri metni"
 }
 """
 
@@ -90,7 +92,7 @@ def translate_text(text: str) -> str:
             # JSON formatında dönmeye zorluyoruz
             response_format={"type": "json_object"},
             max_tokens=500,
-            temperature=0.0,
+            temperature=0.3, # Doğal ve akıcı konuşma çevirisi için optimize edildi
         )
 
         if not response.choices:
@@ -114,8 +116,8 @@ def translate_text(text: str) -> str:
         # ====================================================
         # HANGİ DİLLERİN GÖSTERİLECEĞİNE PYTHON KARAR VERİYOR
         # ====================================================
-        if detected in ["tr", "turkish", "türkçe"]:
-            # Türkçe ise sadece Almanca ve Rusça
+        if detected in ["tr", "turkish", "türkçe", "az", "azerice"]:
+            # Türkçe/Azerice ise sadece Almanca ve Rusça
             if de_text: result_lines.append(f"🇩🇪 {de_text}")
             if ru_text: result_lines.append(f"🇷🇺 {ru_text}")
 
@@ -130,7 +132,7 @@ def translate_text(text: str) -> str:
             if de_text: result_lines.append(f"🇩🇪 {de_text}")
 
         else:
-            # Azerice (az), İngilizce (en) veya diğer diller için 3 dil gösterilir
+            # Diğer diller için 3 dil gösterilir
             if tr_text: result_lines.append(f"🇹🇷 {tr_text}")
             if de_text: result_lines.append(f"🇩🇪 {de_text}")
             if ru_text: result_lines.append(f"🇷🇺 {ru_text}")
@@ -203,12 +205,11 @@ def main():
 
     print("")
     print("==========================================")
-    print("🤖 VIYANA AI (GELİŞMİŞ JSON MODU)")
+    print("🤖 VIYANA AI (GELİŞMİŞ DOĞAL ÇEVİRİ MODU)")
     print("==========================================")
     print("🌍 OTOMATİK ÇEVİRİ: AKTİF")
     print("⚙️ Filtreleme: PYTHON SİSTEMİ")
-    print("🇦🇿 Azerice/İngilizce → 3 dil")
-    print("🇹🇷 Türkçe → Almanca + Rusça")
+    print("🇦🇿 Azerice/Türkçe → Almanca + Rusça")
     print("🇩🇪 Almanca → Türkçe + Rusça")
     print("🇷🇺 Rusça → Türkçe + Almanca")
     print("🧠 MODEL:", MODEL_NAME)
@@ -225,4 +226,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
