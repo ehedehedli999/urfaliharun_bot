@@ -1,7 +1,7 @@
 import os
 import json
 import logging
-import requests
+import urllib.request
 
 from telegram import Update
 from telegram.ext import (
@@ -19,6 +19,7 @@ from openai import OpenAI
 
 GROQ_API_KEY = "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"
 TELEGRAM_BOT_TOKEN = "8363449973:AAElwMlaNrlKJ7sh8PApYPxWb13YqrHJakU"
+GROUP_CHAT_ID = ""  # ÖRNEK: "-1001234567890" (Mesajın gitmesini istediğin grubun ID'sini buraya yaz)
 
 if not GROQ_API_KEY:
     raise RuntimeError("GROQ_API_KEY bulunamadı.")
@@ -167,14 +168,29 @@ async def handle_message(
         logger.error("Mesaj gönderme hatası: %s", e)
 
 # ============================================================
+# BOT AÇILIŞ TETİKLEYİCİSİ (GRUBA AKTİF MESAJI GÖNDERİR)
+# ============================================================
+
+async def post_init(application):
+    if GROUP_CHAT_ID:
+        try:
+            await application.bot.send_message(
+                chat_id=GROUP_CHAT_ID,
+                text="🤖 Bot aktif! Çeviri servisi hizmete hazır."
+            )
+            logger.info("Bot açılış mesajı gruba başarıyla gönderildi.")
+        except Exception as e:
+            logger.error(f"Açılış mesajı gönderilirken hata oluştu: {e}")
+
+# ============================================================
 # BOTU BAŞLAT
 # ============================================================
 
 def main():
-    # Telegram tarafında takılı kalmış eski Webhook'u zorla temizle
+    # Eski Webhook'u temizle
     try:
         clear_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/deleteWebhook?drop_pending_updates=True"
-        requests.get(clear_url, timeout=5)
+        urllib.request.urlopen(clear_url, timeout=5)
         print("🧹 Eski Webhook bağlantısı başarıyla temizlendi.")
     except Exception as ex:
         print(f"Webhook temizlenirken uyarı: {ex}")
@@ -182,6 +198,7 @@ def main():
     app = (
         ApplicationBuilder()
         .token(TELEGRAM_BOT_TOKEN)
+        .post_init(post_init)
         .build()
     )
 
