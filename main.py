@@ -16,7 +16,7 @@ from openai import OpenAI
 # AYARLAR
 # ============================================================
 
-GROQ_API_KEY = "Gsk_6KsTInTXptZ2nXsEOVOvWGdyb3FYJ2PcphZFqQ9n9fWRdM2QMOZj"
+GROQ_API_KEY = "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"
 TELEGRAM_BOT_TOKEN = "8363449973:AAElwMlaNrlKJ7sh8PApYPxWb13YqrHJakU"
 
 if not GROQ_API_KEY:
