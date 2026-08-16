@@ -1,6 +1,7 @@
 import os
 import json
 import logging
+import requests
 
 from telegram import Update
 from telegram.ext import (
@@ -16,7 +17,7 @@ from openai import OpenAI
 # AYARLAR
 # ============================================================
 
-GROQ_API_KEY = "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"
+GROQ_API_KEY = "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"
 TELEGRAM_BOT_TOKEN = "8363449973:AAElwMlaNrlKJ7sh8PApYPxWb13YqrHJakU"
 
 if not GROQ_API_KEY:
@@ -170,6 +171,14 @@ async def handle_message(
 # ============================================================
 
 def main():
+    # Telegram tarafında takılı kalmış eski Webhook'u zorla temizle
+    try:
+        clear_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/deleteWebhook?drop_pending_updates=True"
+        requests.get(clear_url, timeout=5)
+        print("🧹 Eski Webhook bağlantısı başarıyla temizlendi.")
+    except Exception as ex:
+        print(f"Webhook temizlenirken uyarı: {ex}")
+
     app = (
         ApplicationBuilder()
         .token(TELEGRAM_BOT_TOKEN)
@@ -193,7 +202,7 @@ def main():
     print("🚀 BOT BAŞLATILIYOR...")
     print("")
 
-    app.run_polling()
+    app.run_polling(drop_pending_updates=True)
 
 # ============================================================
 # PROGRAM
