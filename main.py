@@ -15,16 +15,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Telegram Bot Token
-TELEGRAM_BOT_TOKEN = "8363449973:AAF6GLHfm_rhtafV_ni_yJB4cZbynkAKCMM"
-
-# OpenRouter API açarı
-OPENROUTER_API_KEYS = [
-    "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"
-]
-
-# Groq API açarı
-GROQ_API_KEY = "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"
+# Render Environment Variables-dən avtomatik oxuyur
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 
 SYSTEM_PROMPT = """Sen C2 (Master) seviyesinde profesyonel bir çeviri ve lokalizasyon uzmanısın. Kullanıcının yazdığı metni; deyimleri, mecazları, kültürel bağlamı, tonu ve en ince anlam nuanslarını tamamen koruyarak çevir. 
 
@@ -46,12 +40,12 @@ Kelimesi kelimesine değil, hedef dilde anadili olan birinin kuracağı en doğa
 def translate_with_fallback(text: str) -> str:
     last_error = ""
     
-    # 1. Addim: OpenRouter ilə yoxla
-    for index, api_key in enumerate(OPENROUTER_API_KEYS, start=1):
+    # 1. OpenRouter ilə yoxla
+    if OPENROUTER_API_KEY:
         try:
             client = OpenAI(
                 base_url="https://openrouter.ai/api/v1",
-                api_key=api_key
+                api_key=OPENROUTER_API_KEY
             )
             completion = client.chat.completions.create(
                 model="deepseek/deepseek-chat",
@@ -64,34 +58,35 @@ def translate_with_fallback(text: str) -> str:
             )
             content = completion.choices[0].message.content
             if content:
-                logger.info(f"Uğurla işlədi: OpenRouter")
+                logger.info("Uğurla işlədi: OpenRouter")
                 return content.strip()
         except Exception as e:
             last_error = str(e)
             logger.error(f"❌ OpenRouter xəta verdi: {last_error}")
 
-    # 2. Addim: Groq ilə yoxla
-    try:
-        client = OpenAI(
-            base_url="https://api.groq.com/openai/v1",
-            api_key=GROQ_API_KEY
-        )
-        completion = client.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": text}
-            ],
-            max_tokens=600,
-            temperature=0.1
-        )
-        content = completion.choices[0].message.content
-        if content:
-            logger.info("Uğurla işlədi: Groq")
-            return content.strip()
-    except Exception as e:
-        last_error = str(e)
-        logger.error(f"❌ Groq Xətası: {last_error}")
+    # 2. Groq ilə yoxla
+    if GROQ_API_KEY:
+        try:
+            client = OpenAI(
+                base_url="https://api.groq.com/openai/v1",
+                api_key=GROQ_API_KEY
+            )
+            completion = client.chat.completions.create(
+                model="llama3-8b-8192",
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": text}
+                ],
+                max_tokens=600,
+                temperature=0.1
+            )
+            content = completion.choices[0].message.content
+            if content:
+                logger.info("Uğurla işlədi: Groq")
+                return content.strip()
+        except Exception as e:
+            last_error = str(e)
+            logger.error(f"❌ Groq Xətası: {last_error}")
 
     return f"⚠️ Xəta: Bütün sistemlər yoxlanıldı. Son xəta: {last_error}"
 
