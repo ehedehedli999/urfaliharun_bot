@@ -24,125 +24,139 @@ logger = logging.getLogger(__name__)
 
 
 # =========================================================
-# ENVIRONMENT
+# ENVIRONMENT VARIABLES
 # =========================================================
 
-TELEGRAM_BOT_TOKEN = os.environ.get(
+TELEGRAM_BOT_TOKEN = os.getenv(
     "TELEGRAM_BOT_TOKEN",
     "8363449973:AAF6GLHfm_rhtafV_ni_yJB4cZbynkAKCMM",
 )
-GROQ_API_KEY = os.environ.get(
+GROQ_API_KEY = os.getenv(
     "GROQ_API_KEY",
     "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",
 )
 
 
 # =========================================================
-# GROQ MODEL (Çalışan Orijinal Model)
+# GROQ MODEL
 # =========================================================
 
 GROQ_MODEL = "qwen/qwen3.6-27b"
 
 
 # =========================================================
-# TRANSLATION SYSTEM PROMPT
+# TRANSLATION PROMPT
 # =========================================================
 
 SYSTEM_PROMPT = """
-Sen Viyana AI adlı profesyonel otomatik çeviri botusun.
+You are Viyana AI, a professional translation bot.
 
-GÖREVİN SADECE ÇEVİRİ YAPMAKTIR.
+YOUR ONLY TASK IS TRANSLATION.
 
-Gelen mesajın dilini otomatik olarak tespit et.
+Detect the language of the user's message automatically.
 
-DİL KURALLARI:
+TRANSLATION RULES:
 
-1. Türkçe mesaj:
-Sadece Almanca ve Rusçaya çevir.
+If the message is Turkish:
+Translate it into German and Russian.
 
-🇩🇪 Almanca: [çeviri]
-🇷🇺 Rusça: [çeviri]
+If the message is German:
+Translate it into Turkish and Russian.
 
+If the message is Russian:
+Translate it into Turkish and German.
 
-2. Almanca mesaj:
-Sadece Türkçe ve Rusçaya çevir.
+If the message is English, Azerbaijani, or another language:
+Translate it into Turkish, German, and Russian.
 
-🇹🇷 Türkçe: [çeviri]
-🇷🇺 Rusça: [çeviri]
+IMPORTANT:
 
+Translate even very short messages and single words.
 
-3. Rusça mesaj:
-Sadece Türkçe ve Almancaya çevir.
+Examples:
+Selam
+Naber
+Nasılsın
+Tamam
+Evet
+Hayır
+Hmm
+Olur
+Yok
+Var
 
-🇹🇷 Türkçe: [çeviri]
-🇩🇪 Almanca: [çeviri]
+NEVER ignore a short message.
 
+TRANSLATION QUALITY:
 
-4. İngilizce, Azerbaycanca veya başka bir dil:
-Sadece Türkçe, Almanca ve Rusçaya çevir.
+- Translate at C1/C2 professional level.
+- Make the translation sound completely natural to a native speaker.
+- Preserve the exact meaning.
+- Preserve the original tone and emotion.
+- Preserve slang and informal language naturally.
+- Do not invent words.
+- Do not invent information.
+- Do not add explanations.
+- Do not add comments.
+- Do not summarize.
+- Do not expand the message.
+- Do not shorten the message.
+- Do not change names.
+- Do not change numbers or dates.
+- Do not add information that is not present in the original message.
 
-🇹🇷 Türkçe: [çeviri]
-🇩🇪 Almanca: [çeviri]
-🇷🇺 Rusça: [çeviri]
+OUTPUT FORMAT:
 
+Turkish source:
+🇩🇪 Almanca: TRANSLATION
+🇷🇺 Rusça: TRANSLATION
 
-ÇEVİRİ KALİTESİ:
+German source:
+🇹🇷 Türkçe: TRANSLATION
+🇷🇺 Rusça: TRANSLATION
 
-• C2 seviyesinde çeviri yap.
-• Ana dili konuşan bir insanın yazacağı kadar doğal ve akıcı ol.
-• Anlamı mümkün olduğunca birebir koru.
-• Kullanıcının söylemediği hiçbir şeyi ekleme.
-• Uydurma kelime, bilgi veya ifade oluşturma.
-• Açıklama yapma.
-• Yorum yapma.
-• Özetleme yapma.
-• Mesajı genişletme.
-• Mesajı kısaltma.
-• Duyguyu ve tonu koru.
-• Argo ifadeleri doğal şekilde çevir.
-• Küfür varsa anlamını koru.
-• Deyimleri hedef dildeki doğal karşılığıyla çevir.
-• Özel isimleri gereksiz yere değiştirme.
-• Sayıları, tarihleri ve önemli bilgileri değiştirme.
+Russian source:
+🇹🇷 Türkçe: TRANSLATION
+🇩🇪 Almanca: TRANSLATION
 
+Other language:
+🇹🇷 Türkçe: TRANSLATION
+🇩🇪 Almanca: TRANSLATION
+🇷🇺 Rusça: TRANSLATION
 
-ÇOK KISA MESAJLARI DA MUTLAKA ÇEVİR:
+VERY IMPORTANT:
 
-"Evet"
-"Hayır"
-"Tamam"
-"Hmm"
-"Naber"
-"Selam"
-"Merhaba"
-"İyi"
-"Yok"
-"Var"
-"Olur"
+Output ONLY the translations.
 
-Tek kelimelik mesajları veya çok kısa mesajları ASLA görmezden gelme.
+Do NOT output:
+- reasoning
+- analysis
+- explanation
+- planning
+- steps
+- "Translate"
+- "Check Constraints"
+- "Construct Output"
+- "Here is the translation"
+- "Done"
+- [çeviri]
+- <think>
+- </think>
+- <analysis>
+- </analysis>
+- <reasoning>
+- </reasoning>
 
+Never describe what you are doing.
 
-KESİNLİKLE ŞUNLARI YAZMA:
+Never repeat the user's original message.
 
-<think>
-</think>
-reasoning
-analysis
-düşünme süreci
-"İşte çeviri"
-"Tabii"
-"Elbette"
-"Here is the translation"
-
-Kullanıcıya hiçbir açıklama verme.
-
-SADECE nihai çevirileri gönder.
+Return only the final translations.
 """
 
 
 # =========================================================
-# THINK / REASONING TEMİZLEME
+# CLEAN BAD MODEL OUTPUT
 # =========================================================
 
 
@@ -150,7 +164,7 @@ def clean_response(text: str) -> str:
     if not text:
         return ""
 
-    # Düşünme süreci ne kadar uzun olursa olsun, ilk bayrak simgesinden (🇩🇪, 🇷🇺, 🇹🇷) öncesini siler
+    # Düşüncə/Analiz mətnlərini təmizləmək üçün ilk bayraq simvolundan (🇩🇪, 🇷🇺, 🇹🇷) əvvəlki hissəni kəsir
     flag_match = re.search(r"(🇩🇪|🇷🇺|🇹🇷)", text)
     if flag_match:
         text = text[flag_match.start() :]
@@ -159,13 +173,13 @@ def clean_response(text: str) -> str:
 
 
 # =========================================================
-# GROQ TRANSLATION
+# TRANSLATE WITH GROQ
 # =========================================================
 
 
 def translate_with_groq(text: str) -> str:
     if not GROQ_API_KEY:
-        return "⚠️ GROQ_API_KEY tapılmadı!"
+        return "⚠️ GROQ_API_KEY bulunamadı."
 
     client = OpenAI(
         base_url="https://api.groq.com/openai/v1",
@@ -173,7 +187,7 @@ def translate_with_groq(text: str) -> str:
     )
 
     try:
-        completion = client.chat.completions.create(
+        response = client.chat.completions.create(
             model=GROQ_MODEL,
             messages=[
                 {
@@ -189,27 +203,25 @@ def translate_with_groq(text: str) -> str:
             max_completion_tokens=1000,
         )
 
-        content = completion.choices[0].message.content
+        message = response.choices[0].message
+        result = message.content
 
-        if not content:
+        if not result:
             return "⚠️ Çeviri alınamadı."
 
-        # Bütün düşünme/analiz kısımlarını bayraktan itibaren kesip temizler
-        content = clean_response(content)
+        result = clean_response(result)
 
-        if not content:
+        if not result:
             return "⚠️ Çeviri alınamadı."
 
-        logger.info(
-            "Çeviri uğurla tamamlandı: %s",
-            GROQ_MODEL,
-        )
+        logger.info("Translation completed successfully.")
 
-        return content
+        return result
 
-    except Exception as e:
-        logger.exception("Groq xətası")
-        return "⚠️ Tərcümə xətası: " + str(e)
+    except Exception as error:
+        logger.exception("Groq translation error")
+
+        return "⚠️ Çeviri hatası:\n" + str(error)
 
 
 # =========================================================
@@ -223,18 +235,20 @@ async def handle_message(
 ):
     message = update.effective_message
 
-    if not message or not message.text:
+    if message is None or message.text is None:
         return
 
     text = message.text.strip()
 
-    if text.startswith("/") or not text:
+    if not text or text.startswith("/"):
         return
 
-    translated = translate_with_groq(text)
+    logger.info("Incoming message: %s", text)
+
+    translation = translate_with_groq(text)
 
     await message.reply_text(
-        translated,
+        translation,
         disable_web_page_preview=True,
     )
 
@@ -248,10 +262,7 @@ async def error_handler(
     update: object,
     context: ContextTypes.DEFAULT_TYPE,
 ):
-    logger.error(
-        "Telegram xətası: %s",
-        context.error,
-    )
+    logger.error("Telegram error: %s", context.error)
 
 
 # =========================================================
@@ -261,10 +272,10 @@ async def error_handler(
 
 def main():
     if not TELEGRAM_BOT_TOKEN:
-        raise RuntimeError("TELEGRAM_BOT_TOKEN tapılmadı!")
+        raise RuntimeError("TELEGRAM_BOT_TOKEN bulunamadı!")
 
     if not GROQ_API_KEY:
-        raise RuntimeError("GROQ_API_KEY tapılmadı!")
+        raise RuntimeError("GROQ_API_KEY bulunamadı!")
 
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
 
@@ -277,13 +288,13 @@ def main():
 
     app.add_error_handler(error_handler)
 
-    logger.info("🤖 VIYANA AI TƏRCÜMƏ BOTU HAZIRDIR!")
+    logger.info("🤖 VIYANA AI TRANSLATION BOT IS LIVE!")
 
     app.run_polling(drop_pending_updates=True)
 
 
 # =========================================================
-# START
+# START BOT
 # =========================================================
 
 if __name__ == "__main__":
