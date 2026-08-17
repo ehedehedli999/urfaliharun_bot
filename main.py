@@ -38,10 +38,10 @@ GROQ_API_KEY = os.environ.get(
 
 
 # =========================================================
-# GROQ MODEL
+# GROQ MODEL (Düşünme metni üretmeyen stabil model)
 # =========================================================
 
-GROQ_MODEL = "qwen/qwen3.6-27b"
+GROQ_MODEL = "llama-3.3-70b-versatile"
 
 
 # =========================================================
@@ -130,6 +130,7 @@ KESİNLİKLE ŞUNLARI YAZMA:
 reasoning
 analysis
 düşünme süreci
+Here's a thinking process
 "İşte çeviri"
 "Tabii"
 "Elbette"
@@ -150,7 +151,7 @@ def clean_response(text: str) -> str:
     if not text:
         return ""
 
-    # <think>...</think> bölümünü tamamen sil
+    # <think>...</think> etiketlerini sil
     text = re.sub(
         r"<think>.*?</think>",
         "",
@@ -158,27 +159,10 @@ def clean_response(text: str) -> str:
         flags=re.DOTALL | re.IGNORECASE,
     )
 
-    # Tek kalan etiketleri sil
-    text = re.sub(
-        r"</?think>",
-        "",
-        text,
-        flags=re.IGNORECASE,
-    )
-
-    text = re.sub(
-        r"</?analysis>",
-        "",
-        text,
-        flags=re.IGNORECASE,
-    )
-
-    text = re.sub(
-        r"</?reasoning>",
-        "",
-        text,
-        flags=re.IGNORECASE,
-    )
+    # Eğer metinde bayrak simgeleri varsa, ilk bayrak simgesinden önceki tüm düşünme yazılarını kes
+    flag_match = re.search(r"(🇩🇪|🇷🇺|🇹🇷)", text)
+    if flag_match:
+        text = text[flag_match.start() :]
 
     return text.strip()
 
@@ -252,7 +236,6 @@ async def handle_message(
 
     text = message.text.strip()
 
-    # Telegram komandalarını çevirmə
     if text.startswith("/") or not text:
         return
 
