@@ -20,9 +20,9 @@ GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 
 # Groq-un ən stabil və aktiv modelləri siyahısı (biri işləməsə digəri avtomatik işə düşəcək)
 GROQ_MODELS = [
-    "llama-3.1-8b-instant",
-    "gemma2-9b-it",
-    "mixtral-8x7b-32768"
+    "qwen/qwen3.6-27b",
+    "openai/gpt-oss-20b",
+    "openai/gpt-oss-120b"
 ]
 
 SYSTEM_PROMPT = """Sen C2 (Master) seviyesinde profesyonel bir çeviri ve lokalizasyon uzmanısın. Kullanıcının yazdığı metni; deyimleri, mecazları, kültürel bağlamı, tonu ve en ince anlam nuanslarını tamamen koruyarak çevir. 
