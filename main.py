@@ -13,25 +13,19 @@ from telegram.ext import (
 )
 
 # ============================================================
-# MÜHİT DƏYİŞƏNLƏRİNDƏN (ENVIRONMENT VARIABLES) OXUNUR
+# 5'Lİ ZİNCİRVARİ EHTİYAT (FALLBACK) GROQ API AÇARLARI
 # ============================================================
 
 GROQ_API_KEYS = [
-    os.getenv("GROQ_API_KEY_1", ""),
-    os.getenv("GROQ_API_KEY_2", ""),
-    os.getenv("GROQ_API_KEY_3", ""),
-    os.getenv("GROQ_API_KEY_4", ""),
-    os.getenv("GROQ_API_KEY_5", ""),
+    os.getenv("GROQ_API_KEY_1", "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"),
+    os.getenv("GROQ_API_KEY_2", "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"),
+    os.getenv("GROQ_API_KEY_3", "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"),
+    os.getenv("GROQ_API_KEY_4", "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"),
+    os.getenv("GROQ_API_KEY_5", "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"),
 ]
 GROQ_API_KEYS = [k for k in GROQ_API_KEYS if k]
 
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
-
-if not TELEGRAM_BOT_TOKEN:
-    raise RuntimeError("TELEGRAM_BOT_TOKEN tapılmadı!")
-
-if not GROQ_API_KEYS:
-    raise RuntimeError("Heç bir GROQ_API_KEY tapılmadı!")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8363449973:AAF6GLHfm_rhtafV_ni_yJB4cZbynkAKCMM")
 
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s",
@@ -71,9 +65,11 @@ def translate_text(text: str) -> str:
             "temperature": 0.0
         }
 
+        # Cloudflare blokunu keçmək üçün User-Agent əlavə olundu
         headers = {
             "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
 
         try:
