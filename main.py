@@ -1,3 +1,4 @@
+import os
 import json
 import logging
 import urllib.request
@@ -12,21 +13,25 @@ from telegram.ext import (
 )
 
 # ============================================================
-# 5'Lİ ZİNCİRVARİ EHTİYAT (FALLBACK) GROQ API AÇARLARI
+# MÜHİT DƏYİŞƏNLƏRİNDƏN (ENVIRONMENT VARIABLES) OXUNUR
 # ============================================================
 
 GROQ_API_KEYS = [
-    "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",  # 1. Açar
-    "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",  # 2. Açar
-    "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",  # 3. Açar
-    "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",  # 4. Açar
-    "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",  # 5. Açar
+    os.getenv("GROQ_API_KEY_1", ""),
+    os.getenv("GROQ_API_KEY_2", ""),
+    os.getenv("GROQ_API_KEY_3", ""),
+    os.getenv("GROQ_API_KEY_4", ""),
+    os.getenv("GROQ_API_KEY_5", ""),
 ]
+GROQ_API_KEYS = [k for k in GROQ_API_KEYS if k]
 
-TELEGRAM_BOT_TOKEN = "8363449973:AAElwMlaNrlKJ7sh8PApYPxWb13YqrHJakU"
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 
 if not TELEGRAM_BOT_TOKEN:
-    raise RuntimeError("TELEGRAM_BOT_TOKEN bulunamadı.")
+    raise RuntimeError("TELEGRAM_BOT_TOKEN tapılmadı!")
+
+if not GROQ_API_KEYS:
+    raise RuntimeError("Heç bir GROQ_API_KEY tapılmadı!")
 
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s",
@@ -34,7 +39,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Köhnə model (llama3-8b-8192) Groq tərəfindən deaktiv edilib, yenisi ilə əvəz olundu
 MODEL_NAME = "llama-3.1-8b-instant"
 
 SYSTEM_PROMPT = """Sen profesyonel bir çeviri motorusun. Kullanıcının yazdığı metni algıla ve tam olarak şu JSON formatında İngilizce (en), Almanca (de), Rusça (ru) ve Türkçe (tr) karşılıklarını ver. Başka hiçbir açıklama yazma:
