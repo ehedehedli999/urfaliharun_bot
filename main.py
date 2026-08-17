@@ -33,18 +33,15 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Aktiv və stabil model adı
 MODEL_NAME = "llama3-8b-8192"
 
-SYSTEM_PROMPT = """Sen profesyonel bir çeviri motorusun. Kullanıcının yazdığı metni algıla ve tam olarak şu JSON formatında İngilizce (en), Almanca (de), Rusça (ru) ve Türkçe (tr) karşılıklarını ver. Başka hiçbir açıklama yazma:
-
-{
-  "detected_lang": "az",
-  "tr": "türkçe çeviri",
-  "de": "almanca çeviri",
-  "ru": "rusça çeviri",
-  "en": "ingilizce çeviri"
-}
+# JSON tələbini ləğv etdik, birbaşa təmiz format istəyirik (400 xətası verməyəcək)
+SYSTEM_PROMPT = """Sen profesyonel bir çeviri motorusun. Kullanıcının yazdığı metni İngilizce, Almanca, Rusça ve Türkçe dillerinə çevir. 
+Cevabını tam olaraq bu formatda ver, başqa heç bir izahat yazma:
+🇬🇧 İngilizce: [...]
+🇩🇪 Almanca: [...]
+🇷🇺 Rusça: [...]
+🇹🇷 Türkçe: [...]
 """
 
 def translate_text(text: str) -> str:
@@ -61,7 +58,6 @@ def translate_text(text: str) -> str:
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": text}
             ],
-            "response_format": {"type": "json_object"},
             "max_tokens": 400,
             "temperature": 0.0
         }
@@ -69,7 +65,7 @@ def translate_text(text: str) -> str:
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
         }
 
         try:
@@ -91,22 +87,7 @@ def translate_text(text: str) -> str:
     if not content:
         return "⚠️ Xəta: Heç bir açar cavab vermədi."
 
-    try:
-        data = json.loads(content)
-        tr = data.get("tr", "")
-        de = data.get("de", "")
-        ru = data.get("ru", "")
-        en = data.get("en", "")
-
-        result = []
-        if en: result.append(f"🇬🇧 {en}")
-        if de: result.append(f"🇩🇪 {de}")
-        if ru: result.append(f"🇷🇺 {ru}")
-        if tr: result.append(f"🇹🇷 {tr}")
-
-        return "\n".join(result)
-    except Exception as e:
-        return f"Çeviri xətası: {content}"
+    return content.strip()
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.effective_message
