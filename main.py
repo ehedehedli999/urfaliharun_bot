@@ -9,21 +9,15 @@ from telegram.ext import (
 )
 from openai import OpenAI
 
-# ============================================================
-# LOGLAMA QURULUMU
-# ============================================================
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s",
     level=logging.INFO,
 )
 logger = logging.getLogger(__name__)
 
-# ============================================================
-# MÜHİT DƏYİŞƏNLƏRİ (RENDER ÜÇÜN)
-# ============================================================
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
-# API açarlarını Render-in Environment Variables bölməsindən avtomatik oxuyur
+# Açarları yoxlayırıq və boşluqları təmizləyirik
 GROQ_API_KEYS = [
     os.getenv("GROQ_API_KEY_1"),
     os.getenv("GROQ_API_KEY_2"),
@@ -31,8 +25,9 @@ GROQ_API_KEYS = [
     os.getenv("GROQ_API_KEY_4"),
     os.getenv("GROQ_API_KEY_5"),
 ]
-# Boş olmayan açarları siyahıya alır
-GROQ_API_KEYS = [k for k in GROQ_API_KEYS if k]
+GROQ_API_KEYS = [k.strip() for k in GROQ_API_KEYS if k and k.strip()]
+
+logger.info(f"Yüklənən Groq açarlarının sayı: {len(GROQ_API_KEYS)}")
 
 MODEL_NAME = "llama-3.1-8b-instant"
 
@@ -45,7 +40,10 @@ Cevabını tam olaraq bu formatda ver, başqa heç bir izahat yazma:
 """
 
 def translate_with_groq(text: str) -> str:
-    """Açarlar arasında keçid edərək Groq API-yə qoşulur"""
+    if not GROQ_API_KEYS:
+        logger.error("XƏTA: Heç bir Groq açarı tapılmadı! Render Environment Variables bölməsini yoxlayın.")
+        return "⚠️ Xəta: Render-də Groq açarları tapılmadı."
+
     for index, api_key in enumerate(GROQ_API_KEYS, start=1):
         try:
             client = OpenAI(
@@ -63,12 +61,14 @@ def translate_with_groq(text: str) -> str:
                 temperature=0.0
             )
             
-            return completion.choices[0].message.content.strip()
+            content = completion.choices[0].message.content
+            if content:
+                return content.strip()
                 
         except Exception as e:
-            logger.warning(f"⚠️ Açar #{index} xəta verdi: {e}. Növbətiyə keçilir...")
+            logger.error(f"❌ Açar #{index} xəta verdi: {str(e)}")
     
-    return "⚠️ Xəta: Heç bir Groq açarı cavab vermədi."
+    return "⚠️ Xəta: Bütün açarlar xəta verdi."
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.effective_message
@@ -79,19 +79,18 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await message.reply_text(translated)
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
-    """Botun çöküşünü əngəlləyir"""
-    logger.error(f"Xəta baş verdi: {context.error}")
+    logger.error(f"Telegram xətası: {context.error}")
 
 def main():
     if not TELEGRAM_BOT_TOKEN:
-        print("XƏTA: TELEGRAM_BOT_TOKEN mühit dəyişəni təyin olunmayıb!")
+        logger.error("XƏTA: TELEGRAM_BOT_TOKEN tapılmadı!")
         return
 
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_error_handler(error_handler)
     
-    print("🤖 BOT UĞURLA İŞƏ DÜŞDÜ!")
+    logger.info("🤖 BOT İŞƏ DÜŞDÜ!")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
