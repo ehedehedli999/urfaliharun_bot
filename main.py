@@ -19,17 +19,19 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ============================================================
-# MÜHİT DƏYİŞƏNLƏRİ (ENVIRONMENT VARIABLES)
+# MÜHİT DƏYİŞƏNLƏRİ (RENDER ÜÇÜN)
 # ============================================================
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8363449973:AAF6GLHfm_rhtafV_ni_yJB4cZbynkAKCMM")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
+# API açarlarını Render-in Environment Variables bölməsindən avtomatik oxuyur
 GROQ_API_KEYS = [
-    os.getenv("GROQ_API_KEY_1", "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"),
-    os.getenv("GROQ_API_KEY_2", "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"),
-    os.getenv("GROQ_API_KEY_3", "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"),
-    os.getenv("GROQ_API_KEY_4", "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"),
-    os.getenv("GROQ_API_KEY_5", "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"),
+    os.getenv("GROQ_API_KEY_1"),
+    os.getenv("GROQ_API_KEY_2"),
+    os.getenv("GROQ_API_KEY_3"),
+    os.getenv("GROQ_API_KEY_4"),
+    os.getenv("GROQ_API_KEY_5"),
 ]
+# Boş olmayan açarları siyahıya alır
 GROQ_API_KEYS = [k for k in GROQ_API_KEYS if k]
 
 MODEL_NAME = "llama-3.1-8b-instant"
@@ -43,7 +45,7 @@ Cevabını tam olaraq bu formatda ver, başqa heç bir izahat yazma:
 """
 
 def translate_with_groq(text: str) -> str:
-    """Rəsmi OpenAI SDK vasitəsilə Groq API-yə qoşulur və 5 açar arasında avtomatik keçid edir (Fallback)"""
+    """Açarlar arasında keçid edərək Groq API-yə qoşulur"""
     for index, api_key in enumerate(GROQ_API_KEYS, start=1):
         try:
             client = OpenAI(
@@ -61,9 +63,7 @@ def translate_with_groq(text: str) -> str:
                 temperature=0.0
             )
             
-            content = completion.choices[0].message.content
-            if content:
-                return content.strip()
+            return completion.choices[0].message.content.strip()
                 
         except Exception as e:
             logger.warning(f"⚠️ Açar #{index} xəta verdi: {e}. Növbətiyə keçilir...")
@@ -72,21 +72,26 @@ def translate_with_groq(text: str) -> str:
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.effective_message
-    if not message or not message.text:
+    if not message or not message.text or message.text.startswith("/"):
         return
 
-    text = message.text.strip()
-    if not text or text.startswith("/"):
-        return
-
-    translated = translate_with_groq(text)
+    translated = translate_with_groq(message.text.strip())
     await message.reply_text(translated)
 
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
+    """Botun çöküşünü əngəlləyir"""
+    logger.error(f"Xəta baş verdi: {context.error}")
+
 def main():
+    if not TELEGRAM_BOT_TOKEN:
+        print("XƏTA: TELEGRAM_BOT_TOKEN mühit dəyişəni təyin olunmayıb!")
+        return
+
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.add_error_handler(error_handler)
     
-    print("🤖 BOT İŞƏ DÜŞDÜ VƏ QÜSURSUZ İŞLƏYİR!")
+    print("🤖 BOT UĞURLA İŞƏ DÜŞDÜ!")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
