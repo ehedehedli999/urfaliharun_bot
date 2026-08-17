@@ -16,8 +16,14 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
-OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+
+# Groq-un ən stabil və aktiv modelləri siyahısı (biri işləməsə digəri avtomatik işə düşəcək)
+GROQ_MODELS = [
+    "llama-3.1-8b-instant",
+    "gemma2-9b-it",
+    "mixtral-8x7b-32768"
+]
 
 SYSTEM_PROMPT = """Sen C2 (Master) seviyesinde profesyonel bir çeviri ve lokalizasyon uzmanısın. Kullanıcının yazdığı metni; deyimleri, mecazları, kültürel bağlamı, tonu ve en ince anlam nuanslarını tamamen koruyarak çevir. 
 
@@ -36,18 +42,21 @@ KURAL:
 Kelimesi kelimesine değil, hedef dilde anadili olan birinin kuracağı en doğal, akıcı ve profesyonel cümle yapısını kullan.
 """
 
-def translate_with_fallback(text: str) -> str:
+def translate_with_groq(text: str) -> str:
     last_error = ""
     
-    # 1. OpenRouter ilə yoxla
-    if OPENROUTER_API_KEY:
+    if not GROQ_API_KEY:
+        return "⚠️ Xəta: GROQ_API_KEY tapılmadı!"
+
+    client = OpenAI(
+        base_url="https://api.groq.com/openai/v1",
+        api_key=GROQ_API_KEY
+    )
+
+    for model_name in GROQ_MODELS:
         try:
-            client = OpenAI(
-                base_url="https://openrouter.ai/api/v1",
-                api_key=OPENROUTER_API_KEY
-            )
             completion = client.chat.completions.create(
-                model="deepseek/deepseek-chat",
+                model=model_name,
                 messages=[
                     {"role": "system", "content": SYSTEM_PROMPT},
                     {"role": "user", "content": text}
@@ -57,44 +66,20 @@ def translate_with_fallback(text: str) -> str:
             )
             content = completion.choices[0].message.content
             if content:
-                logger.info("Uğurla işlədi: OpenRouter")
+                logger.info(f"Uğurla işlədi: {model_name}")
                 return content.strip()
         except Exception as e:
             last_error = str(e)
-            logger.error(f"❌ OpenRouter xəta verdi: {last_error}")
+            logger.error(f"❌ Model {model_name} xəta verdi: {last_error}")
 
-    # 2. Groq ilə yoxla
-    if GROQ_API_KEY:
-        try:
-            client = OpenAI(
-                base_url="https://api.groq.com/openai/v1",
-                api_key=GROQ_API_KEY
-            )
-            completion = client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": text}
-                ],
-                max_tokens=600,
-                temperature=0.1
-            )
-            content = completion.choices[0].message.content
-            if content:
-                logger.info("Uğurla işlədi: Groq")
-                return content.strip()
-        except Exception as e:
-            last_error = str(e)
-            logger.error(f"❌ Groq Xətası: {last_error}")
-
-    return f"⚠️ Xəta: Bütün sistemlər yoxlanıldı. Son xəta: {last_error}"
+    return f"⚠️ Xəta: Bütün Groq modelləri yoxlanıldı. Son xəta: {last_error}"
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.effective_message
     if not message or not message.text or message.text.startswith("/"):
         return
 
-    translated = translate_with_fallback(message.text.strip())
+    translated = translate_with_groq(message.text.strip())
     await message.reply_text(translated)
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
@@ -105,7 +90,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_error_handler(error_handler)
     
-    logger.info("🤖 BOT HAZIRDIR VƏ İŞLƏYİR!")
+    logger.info("🤖 BOT GROQ İLƏ TAM HAZIRDIR VƏ İŞLƏYİR!")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
