@@ -1,48 +1,52 @@
+import logging
 import os
 import re
-import logging
-
-from telegram import Update
-from telegram.ext import (
-ApplicationBuilder,
-ContextTypes,
-MessageHandler,
-filters,
-)
 
 from openai import OpenAI
-
-
-=========================================================
-LOGGING
-===========================================================
-
-logging.basicConfig(
-format="%(asctime)s - %(levelname)s - %(message)s",
-level=logging.INFO,
+from telegram import Update
+from telegram.ext import (
+    ApplicationBuilder,
+    ContextTypes,
+    MessageHandler,
+    filters,
 )
 
-logger = logging.getLogger(name)
+# =========================================================
+# LOGGING
+# =========================================================
+
+logging.basicConfig(
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    level=logging.INFO,
+)
+
+logger = logging.getLogger(__name__)
 
 
-=========================================================
-ENVIRONMENT
-=========================================================
+# =========================================================
+# ENVIRONMENT
+# =========================================================
 
-TELEGRAM_BOT_TOKEN = os.environ.get"8363449973:AAF6GLHfm_rhtafV_ni_yJB4cZbynkAKCMM"
-GROQ_API_KEY = os.environ.get"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"
+TELEGRAM_BOT_TOKEN = os.environ.get(
+    "TELEGRAM_BOT_TOKEN",
+    "8363449973:AAF6GLHfm_rhtafV_ni_yJB4cZbynkAKCMM",
+)
+GROQ_API_KEY = os.environ.get(
+    "GROQ_API_KEY",
+    "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",
+)
 
 
-=========================================================
-GROQ MODEL
-=========================================================
+# =========================================================
+# GROQ MODEL
+# =========================================================
 
 GROQ_MODEL = "qwen/qwen3.6-27b"
 
 
-=========================================================
-TRANSLATION SYSTEM PROMPT
-=========================================================
+# =========================================================
+# TRANSLATION SYSTEM PROMPT
+# =========================================================
 
 SYSTEM_PROMPT = """
 Sen Viyana AI adlı profesyonel otomatik çeviri botusun.
@@ -137,209 +141,174 @@ SADECE nihai çevirileri gönder.
 """
 
 
-=========================================================
-THINK / REASONING TEMİZLEME
-=========================================================
+# =========================================================
+# THINK / REASONING TEMİZLEME
+# =========================================================
+
 
 def clean_response(text: str) -> str:
+    if not text:
+        return ""
 
-if not text:
-return ""
+    text = re.sub(
+        r"<think>.*?</think>",
+        "",
+        text,
+        flags=re.DOTALL | re.IGNORECASE,
+    )
 
-# <think>...</think> bölümünü tamamen sil
-text = re.sub(
-r"<think>.*?</think>",
-"",
-text,
-flags=re.DOTALL | re.IGNORECASE,
-)
+    text = re.sub(
+        r"</?think>",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
 
-# Tek kalan etiketleri sil
-text = re.sub(
-r"</?think>",
-"",
-text,
-flags=re.IGNORECASE,
-)
+    text = re.sub(
+        r"</?analysis>",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
 
-text = re.sub(
-r"</?analysis>",
-"",
-text,
-flags=re.IGNORECASE,
-)
+    text = re.sub(
+        r"</?reasoning>",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
 
-text = re.sub(
-r"</?reasoning>",
-"",
-text,
-flags=re.IGNORECASE,
-)
-
-return text.strip()
+    return text.strip()
 
 
-=========================================================
-GROQ TRANSLATION
-=========================================================
+# =========================================================
+# GROQ TRANSLATION
+# =========================================================
+
 
 def translate_with_groq(text: str) -> str:
+    if not GROQ_API_KEY:
+        return "⚠️ GROQ_API_KEY tapılmadı!"
 
-if not GROQ_API_KEY:
-return "⚠️ GROQ_API_KEY tapılmadı!"
+    client = OpenAI(
+        base_url="https://api.groq.com/openai/v1",
+        api_key=GROQ_API_KEY,
+    )
 
-client = OpenAI(
-base_url="https://api.groq.com/openai/v1",
-api_key=GROQ_API_KEY,
-)
+    try:
+        completion = client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[
+                {
+                    "role": "system",
+                    "content": SYSTEM_PROMPT,
+                },
+                {
+                    "role": "user",
+                    "content": text,
+                },
+            ],
+            temperature=0.2,
+            max_completion_tokens=1000,
+            reasoning_effort="none",
+            reasoning_format="hidden",
+        )
 
-try:
+        content = completion.choices[0].message.content
 
-completion = client.chat.completions.create(
-model=GROQ_MODEL,
+        if not content:
+            return "⚠️ Çeviri alınamadı."
 
-messages=[
-{
-"role": "system",
-"content": SYSTEM_PROMPT,
-},
-{
-"role": "user",
-"content": text,
-},
- ],
+        content = clean_response(content)
 
-temperature=0.2,
+        if not content:
+            return "⚠️ Çeviri alınamadı."
 
-max_completion_tokens=1000,
+        logger.info(
+            "Çeviri uğurla tamamlandı: %s",
+            GROQ_MODEL,
+        )
 
-# Qwen reasoning prosesini istifadəçiyə göstərmə
-reasoning_effort="none",
-reasoning_format="hidden",
-)
+        return content
 
-content = completion.choices[0].message.content
-
-if not content:
-return "⚠️ Çeviri alınamadı."
-
-# Güvenlik için think/analysis temizle
-content = clean_response(content)
-
-if not content:
-return "⚠️ Çeviri alınamadı."
-
-logger.info(
-"Çeviri uğurla tamamlandı: %s",
-GROQ_MODEL,
-)
-
-return content
-
-except Exception as e:
-
-logger.exception("Groq xətası")
-
-return (
-"⚠️ Tərcümə xətası: "
-+ str(e)
-)
+    except Exception as e:
+        logger.exception("Groq xətası")
+        return "⚠️ Tərcümə xətası: " + str(e)
 
 
-=========================================================
-TELEGRAM MESSAGE HANDLER
-=========================================================
+# =========================================================
+# TELEGRAM MESSAGE HANDLER
+# =========================================================
+
 
 async def handle_message(
-update: Update,
-context: ContextTypes.DEFAULT_TYPE,
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
 ):
+    message = update.effective_message
 
-message = update.effective_message
+    if not message or not message.text:
+        return
 
-if not message:
-return
+    text = message.text.strip()
 
-if not message.text:
-return
+    if text.startswith("/") or not text:
+        return
 
-text = message.text.strip()
+    translated = translate_with_groq(text)
 
-# Telegram komandalarını çevirmə
-if text.startswith("/"):
-return
-
-if not text:
-return
-
-translated = translate_with_groq(text)
-
-await message.reply_text(
-translated,
-disable_web_page_preview=True,
-)
+    await message.reply_text(
+        translated,
+        disable_web_page_preview=True,
+    )
 
 
-=========================================================
-ERROR HANDLER
-=========================================================
+# =========================================================
+# ERROR HANDLER
+# =========================================================
+
 
 async def error_handler(
-update: object,
-context: ContextTypes.DEFAULT_TYPE,
+    update: object,
+    context: ContextTypes.DEFAULT_TYPE,
 ):
+    logger.error(
+        "Telegram xətası: %s",
+        context.error,
+    )
 
-logger.error(
-"Telegram xətası: %s",
-context.error,
-)
 
+# =========================================================
+# MAIN
+# =========================================================
 
-=========================================================
-MAIN
-=========================================================
 
 def main():
+    if not TELEGRAM_BOT_TOKEN:
+        raise RuntimeError("TELEGRAM_BOT_TOKEN tapılmadı!")
 
-if not TELEGRAM_BOT_TOKEN:
-raise RuntimeError(
-"TELEGRAM_BOT_TOKEN tapılmadı!"
-)
+    if not GROQ_API_KEY:
+        raise RuntimeError("GROQ_API_KEY tapılmadı!")
 
-if not GROQ_API_KEY:
-raise RuntimeError(
-"GROQ_API_KEY tapılmadı!"
-)
+    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
 
-app = (
-ApplicationBuilder()
-.token(TELEGRAM_BOT_TOKEN)
-.build()
-)
+    app.add_handler(
+        MessageHandler(
+            filters.TEXT & ~filters.COMMAND,
+            handle_message,
+        )
+    )
 
-app.add_handler(
-MessageHandler(
-filters.TEXT & ~filters.COMMAND,
-handle_message,
-)
-)
+    app.add_error_handler(error_handler)
 
-app.add_error_handler(
-error_handler
-)
+    logger.info("🤖 VIYANA AI TƏRCÜMƏ BOTU HAZIRDIR!")
 
-logger.info(
-"🤖 VIYANA AI TƏRCÜMƏ BOTU HAZIRDIR!"
-)
-
-app.run_polling(
-drop_pending_updates=True
-)
+    app.run_polling(drop_pending_updates=True)
 
 
-=========================================================
-START
-=========================================================
+# =========================================================
+# START
+# =========================================================
 
-if name == "main":
-main()
+if __name__ == "__main__":
+    main()
