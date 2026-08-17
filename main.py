@@ -156,7 +156,7 @@ Return only the final translations.
 
 
 # =========================================================
-# CLEAN BAD MODEL OUTPUT
+# CLEAN BAD MODEL OUTPUT (KESİN SÜZGEÇ)
 # =========================================================
 
 
@@ -164,10 +164,27 @@ def clean_response(text: str) -> str:
     if not text:
         return ""
 
-    # Düşüncə/Analiz mətnlərini təmizləmək üçün ilk bayraq simvolundan (🇩🇪, 🇷🇺, 🇹🇷) əvvəlki hissəni kəsir
-    flag_match = re.search(r"(🇩🇪|🇷🇺|🇹🇷)", text)
-    if flag_match:
-        text = text[flag_match.start() :]
+    # 1. <think>...</think> bloklarını tamamen temizle
+    text = re.sub(
+        r"<think>.*?</think>", "", text, flags=re.DOTALL | re.IGNORECASE
+    )
+
+    # 2. Satır satır inceleyip SADECE gerçek bayraklı çevirileri süz
+    lines = text.split("\n")
+    valid_lines = []
+
+    for line in lines:
+        stripped = line.strip()
+        # Satır bayrakla (🇩🇪, 🇷🇺, 🇹🇷) başlıyorsa
+        if re.match(r"^(🇩🇪|🇷🇺|🇹🇷)", stripped):
+            # Taslak/Placeholder olan satırları atla ([German Translation], [çeviri] vs.)
+            if "[" in stripped or "]" in stripped:
+                continue
+            valid_lines.append(stripped)
+
+    # Geçerli çeviri satırları bulunduysa sadece onları birleştir
+    if valid_lines:
+        return "\n".join(valid_lines)
 
     return text.strip()
 
