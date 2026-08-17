@@ -34,8 +34,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Universal və stabil işləyən model adı olaraq dəyişdirildi
-MODEL_NAME = "llama3-8b-8192"
+# Köhnə model (llama3-8b-8192) Groq tərəfindən deaktiv edilib, yenisi ilə əvəz olundu
+MODEL_NAME = "llama-3.1-8b-instant"
 
 SYSTEM_PROMPT = """Sen profesyonel bir çeviri motorusun. Kullanıcının yazdığı metni algıla ve tam olarak şu JSON formatında İngilizce (en), Almanca (de), Rusça (ru) ve Türkçe (tr) karşılıklarını ver. Başka hiçbir açıklama yazma:
 
