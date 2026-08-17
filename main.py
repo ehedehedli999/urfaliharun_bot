@@ -26,8 +26,13 @@ OPENROUTER_API_KEYS = [
     "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",
 ]
 
-# 100% aktiv və pulsuz olan Google Gemma modeli
-MODEL_NAME = "google/gemma-2-9b-it:free"
+# Ehtiyatlı pulsuz modellər siyahısı (biri işləməsə avtomatik digərinə keçəcək)
+FREE_MODELS = [
+    "deepseek/deepseek-r1:free",
+    "google/gemma-2-9b-it:free",
+    "meta-llama/llama-3.1-8b-instruct:free",
+    "mistralai/mistral-7b-instruct:free"
+]
 
 SYSTEM_PROMPT = """Sen C2 (Master) seviyesinde profesyonel bir çeviri ve lokalizasyon uzmanısın. Kullanıcının yazdığı metni; deyimleri, mecazları, kültürel bağlamı, tonu ve en ince anlam nuanslarını tamamen koruyarak İngilizce, Almanca, Rusça ve Türkçe dillerine kusursuz bir şekilde çevir. Kelimesi kelimesine değil, hedef dilde anadili olan birinin kuracağı en doğal, akıcı ve profesyonel cümle yapısını kullan.
 Cevabını tam olarak bu formatta ver, başka hiçbir açıklama veya metin ekleme:
@@ -39,32 +44,34 @@ Cevabını tam olarak bu formatta ver, başka hiçbir açıklama veya metin ekle
 
 def translate_with_openrouter(text: str) -> str:
     last_error = ""
-    for index, api_key in enumerate(OPENROUTER_API_KEYS, start=1):
-        try:
-            client = OpenAI(
-                base_url="https://openrouter.ai/api/v1",
-                api_key=api_key
-            )
-            
-            completion = client.chat.completions.create(
-                model=MODEL_NAME,
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": text}
-                ],
-                max_tokens=600,
-                temperature=0.1
-            )
-            
-            content = completion.choices[0].message.content
-            if content:
-                return content.strip()
+    for model_name in FREE_MODELS:
+        for index, api_key in enumerate(OPENROUTER_API_KEYS, start=1):
+            try:
+                client = OpenAI(
+                    base_url="https://openrouter.ai/api/v1",
+                    api_key=api_key
+                )
                 
-        except Exception as e:
-            last_error = str(e)
-            logger.error(f"❌ Açar #{index} xəta verdi: {last_error}")
+                completion = client.chat.completions.create(
+                    model=model_name,
+                    messages=[
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user", "content": text}
+                    ],
+                    max_tokens=600,
+                    temperature=0.1
+                )
+                
+                content = completion.choices[0].message.content
+                if content:
+                    logger.info( uğurla işlədi: {model_name} (Açar #{index}))
+                    return content.strip()
+                    
+            except Exception as e:
+                last_error = str(e)
+                logger.error(f"❌ Model: {model_name} | Açar #{index} xəta verdi: {last_error}")
     
-    return f"⚠️ OpenRouter Xətası: {last_error}"
+    return f"⚠️ OpenRouter Xətası: Bütün modellər yoxlanıldı. Son xəta: {last_error}"
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.effective_message
@@ -82,9 +89,8 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_error_handler(error_handler)
     
-    logger.info("🤖 BOT HAZIRDIR VƏ İŞLƏYİR!")
+    logger.info("🤖 BOT TAM HAZIRDIR VƏ İŞLƏYİR!")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
     main()
-
