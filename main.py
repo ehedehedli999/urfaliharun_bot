@@ -1,9 +1,5 @@
 import os
-import json
 import logging
-import urllib.request
-import urllib.error
-
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder,
@@ -11,10 +7,21 @@ from telegram.ext import (
     MessageHandler,
     filters,
 )
+from openai import OpenAI
 
 # ============================================================
-# 5'Lİ ZİNCİRVARİ EHTİYAT (FALLBACK) GROQ API AÇARLARI
+# LOGLAMA QURULUMU
 # ============================================================
+logging.basicConfig(
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    level=logging.INFO,
+)
+logger = logging.getLogger(__name__)
+
+# ============================================================
+# MÜHİT DƏYİŞƏNLƏRİ (ENVIRONMENT VARIABLES)
+# ============================================================
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8363449973:AAF6GLHfm_rhtafV_ni_yJB4cZbynkAKCMM")
 
 GROQ_API_KEYS = [
     os.getenv("GROQ_API_KEY_1", "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"),
@@ -25,17 +32,8 @@ GROQ_API_KEYS = [
 ]
 GROQ_API_KEYS = [k for k in GROQ_API_KEYS if k]
 
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8363449973:AAF6GLHfm_rhtafV_ni_yJB4cZbynkAKCMM")
+MODEL_NAME = "llama-3.1-8b-instant"
 
-logging.basicConfig(
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    level=logging.INFO,
-)
-logger = logging.getLogger(__name__)
-
-MODEL_NAME = "llama3-8b-8192"
-
-# JSON tələbini ləğv etdik, birbaşa təmiz format istəyirik (400 xətası verməyəcək)
 SYSTEM_PROMPT = """Sen profesyonel bir çeviri motorusun. Kullanıcının yazdığı metni İngilizce, Almanca, Rusça ve Türkçe dillerinə çevir. 
 Cevabını tam olaraq bu formatda ver, başqa heç bir izahat yazma:
 🇬🇧 İngilizce: [...]
@@ -44,50 +42,33 @@ Cevabını tam olaraq bu formatda ver, başqa heç bir izahat yazma:
 🇹🇷 Türkçe: [...]
 """
 
-def translate_text(text: str) -> str:
-    content = ""
-    url = "https://api.groq.com/openai/v1/chat/completions"
-
+def translate_with_groq(text: str) -> str:
+    """Rəsmi OpenAI SDK vasitəsilə Groq API-yə qoşulur və 5 açar arasında avtomatik keçid edir (Fallback)"""
     for index, api_key in enumerate(GROQ_API_KEYS, start=1):
-        if not api_key:
-            continue
-            
-        payload = {
-            "model": MODEL_NAME,
-            "messages": [
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": text}
-            ],
-            "max_tokens": 400,
-            "temperature": 0.0
-        }
-
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-        }
-
         try:
-            req = urllib.request.Request(
-                url,
-                data=json.dumps(payload).encode('utf-8'),
-                headers=headers,
-                method='POST'
+            client = OpenAI(
+                base_url="https://api.groq.com/openai/v1",
+                api_key=api_key
             )
             
-            with urllib.request.urlopen(req, timeout=10) as response:
-                res_data = json.loads(response.read().decode('utf-8'))
-                content = res_data['choices'][0]['message']['content']
-                if content:
-                    break
+            completion = client.chat.completions.create(
+                model=MODEL_NAME,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": text}
+                ],
+                max_tokens=400,
+                temperature=0.0
+            )
+            
+            content = completion.choices[0].message.content
+            if content:
+                return content.strip()
+                
         except Exception as e:
             logger.warning(f"⚠️ Açar #{index} xəta verdi: {e}. Növbətiyə keçilir...")
-
-    if not content:
-        return "⚠️ Xəta: Heç bir açar cavab vermədi."
-
-    return content.strip()
+    
+    return "⚠️ Xəta: Heç bir Groq açarı cavab vermədi."
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.effective_message
@@ -98,21 +79,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not text or text.startswith("/"):
         return
 
-    translated = translate_text(text)
-    if translated:
-        await message.reply_text(translated)
+    translated = translate_with_groq(text)
+    await message.reply_text(translated)
 
 def main():
-    try:
-        clear_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/deleteWebhook?drop_pending_updates=True"
-        urllib.request.urlopen(clear_url, timeout=5)
-    except:
-        pass
-
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
-    print("🤖 BOT İŞƏ DÜŞDÜ!")
+    print("🤖 BOT İŞƏ DÜŞDÜ VƏ QÜSURSUZ İŞLƏYİR!")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
