@@ -38,10 +38,10 @@ GROQ_API_KEY = os.environ.get(
 
 
 # =========================================================
-# GROQ MODEL (Bütün hərflər kiçik olmalıdır)
+# GROQ MODEL (Çalışan Orijinal Model)
 # =========================================================
 
-GROQ_MODEL = "llama-3.3-70b-versatile"
+GROQ_MODEL = "qwen/qwen3.6-27b"
 
 
 # =========================================================
@@ -130,7 +130,6 @@ KESİNLİKLE ŞUNLARI YAZMA:
 reasoning
 analysis
 düşünme süreci
-Here's a thinking process
 "İşte çeviri"
 "Tabii"
 "Elbette"
@@ -151,7 +150,7 @@ def clean_response(text: str) -> str:
     if not text:
         return ""
 
-    # Model hər hansı şəkildə pre-text yazarsa, birbaşa bayraqdan başlayan hissəni kəs
+    # Düşünme süreci ne kadar uzun olursa olsun, ilk bayrak simgesinden (🇩🇪, 🇷🇺, 🇹🇷) öncesini siler
     flag_match = re.search(r"(🇩🇪|🇷🇺|🇹🇷)", text)
     if flag_match:
         text = text[flag_match.start() :]
@@ -195,6 +194,7 @@ def translate_with_groq(text: str) -> str:
         if not content:
             return "⚠️ Çeviri alınamadı."
 
+        # Bütün düşünme/analiz kısımlarını bayraktan itibaren kesip temizler
         content = clean_response(content)
 
         if not content:
