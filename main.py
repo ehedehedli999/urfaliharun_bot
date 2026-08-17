@@ -15,10 +15,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Telegram Bot Token birbaşa yazıldı
+# Telegram Bot Token
 TELEGRAM_BOT_TOKEN = "8363449973:AAF6GLHfm_rhtafV_ni_yJB4cZbynkAKCMM"
 
-# OpenRouter API açarları birbaşa yazıldı
+# OpenRouter API açarları
 OPENROUTER_API_KEYS = [
     "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",
     "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",
@@ -26,8 +26,8 @@ OPENROUTER_API_KEYS = [
     "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",
 ]
 
-# Ən stabil pulsuz model
-MODEL_NAME = "meta-llama/llama-3.1-8b-instruct:free"
+# Hal-hazırda pulsuz işləyən model ilə əvəz olundu
+MODEL_NAME = "deepseek/deepseek-r1:free"
 
 SYSTEM_PROMPT = """Sen C2 (Master) seviyesinde profesyonel bir çeviri ve lokalizasyon uzmanısın. Kullanıcının yazdığı metni; deyimleri, mecazları, kültürel bağlamı, tonu ve en ince anlam nuanslarını tamamen koruyarak İngilizce, Almanca, Rusça ve Türkçe dillerine kusursuz bir şekilde çevir. Kelimesi kelimesine değil, hedef dilde anadili olan birinin kuracağı en doğal, akıcı ve profesyonel cümle yapısını kullan.
 Cevabını tam olarak bu formatta ver, başka hiçbir açıklama veya metin ekleme:
@@ -82,7 +82,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_error_handler(error_handler)
     
-    logger.info("🤖 BOT TAM HAZIRDIR VƏ İŞLƏYİR!")
+    logger.info("🤖 BOT HAZIRDIR VƏ İŞLƏYİR!")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
