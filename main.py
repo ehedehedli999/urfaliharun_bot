@@ -150,6 +150,7 @@ def clean_response(text: str) -> str:
     if not text:
         return ""
 
+    # <think>...</think> bölümünü tamamen sil
     text = re.sub(
         r"<think>.*?</think>",
         "",
@@ -157,6 +158,7 @@ def clean_response(text: str) -> str:
         flags=re.DOTALL | re.IGNORECASE,
     )
 
+    # Tek kalan etiketleri sil
     text = re.sub(
         r"</?think>",
         "",
@@ -210,8 +212,6 @@ def translate_with_groq(text: str) -> str:
             ],
             temperature=0.2,
             max_completion_tokens=1000,
-            reasoning_effort="none",
-            reasoning_format="hidden",
         )
 
         content = completion.choices[0].message.content
@@ -252,6 +252,7 @@ async def handle_message(
 
     text = message.text.strip()
 
+    # Telegram komandalarını çevirmə
     if text.startswith("/") or not text:
         return
 
