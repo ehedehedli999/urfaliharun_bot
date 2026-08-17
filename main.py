@@ -38,7 +38,7 @@ GROQ_API_KEY = os.environ.get(
 
 
 # =========================================================
-# GROQ MODEL (Düşünme metni üretmeyen stabil model)
+# GROQ MODEL (Bütün hərflər kiçik olmalıdır)
 # =========================================================
 
 GROQ_MODEL = "llama-3.3-70b-versatile"
@@ -151,15 +151,7 @@ def clean_response(text: str) -> str:
     if not text:
         return ""
 
-    # <think>...</think> etiketlerini sil
-    text = re.sub(
-        r"<think>.*?</think>",
-        "",
-        text,
-        flags=re.DOTALL | re.IGNORECASE,
-    )
-
-    # Eğer metinde bayrak simgeleri varsa, ilk bayrak simgesinden önceki tüm düşünme yazılarını kes
+    # Model hər hansı şəkildə pre-text yazarsa, birbaşa bayraqdan başlayan hissəni kəs
     flag_match = re.search(r"(🇩🇪|🇷🇺|🇹🇷)", text)
     if flag_match:
         text = text[flag_match.start() :]
