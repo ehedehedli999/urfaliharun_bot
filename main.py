@@ -26,47 +26,29 @@ GROQ_API_KEYS = [
 ]
 
 TELEGRAM_BOT_TOKEN = "8363449973:AAElwMlaNrlKJ7sh8PApYPxWb13YqrHJakU"
-GROUP_CHAT_ID = ""  # ÖRNEK: "-1001234567890"
+GROUP_CHAT_ID = "" 
 
 if not TELEGRAM_BOT_TOKEN:
     raise RuntimeError("TELEGRAM_BOT_TOKEN bulunamadı.")
-
-# ============================================================
-# LOG
-# ============================================================
 
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s",
     level=logging.INFO,
 )
-
 logger = logging.getLogger(__name__)
 
 MODEL_NAME = "llama-3.1-8b-instant"
 
-# ============================================================
-# C2 ÇEVİRİ TALİMATI
-# ============================================================
-
-SYSTEM_PROMPT = """Sen metne tamamen sadık kalan, asla kelime veya anlam uydurmayan, C2 seviyesinde anadili gibi konuşan profesyonel bir çeviri motorusun.
-
-KESİN KURALLAR:
-1. Asla metne kendi kafandan veda (örn: "Пока", "Bis bald"), selam veya ek sohbet cümleleri EKLEME.
-2. Kullanıcı ne yazdıysa dışına çıkmadan, tam olarak ne yazıldıysa onu hedef dildeki en doğal, akıcı ve C2 seviyesindeki insan tonuyla çevir. Ne eksik ne fazla!
-3. Çıktın KESİNLİKLE sadece aşağıdaki JSON formatında olmalıdır. Başka hiçbir açıklama yazma:
+SYSTEM_PROMPT = """Sen profesyonel bir çeviri motorusun. Kullanıcının yazdığı metni algıla ve tam olarak şu JSON formatında İngilizce (en), Almanca (de), Rusça (ru) ve Türkçe (tr) karşılıklarını ver. Başka hiçbir açıklama yazma:
 
 {
   "detected_lang": "az",
-  "tr": "Türkçe çeviri",
-  "de": "Almanca çeviri",
-  "ru": "Rusça çeviri",
-  "en": "İngilizce çeviri"
+  "tr": "türkçe çeviri",
+  "de": "almanca çeviri",
+  "ru": "rusça çeviri",
+  "en": "ingilizce çeviri"
 }
 """
-
-# ============================================================
-# 5'Lİ DÖNGÜLÜ FALLBACK ÇEVİRİ FONKSİYONU
-# ============================================================
 
 def translate_text(text: str) -> str:
     content = ""
@@ -93,59 +75,30 @@ def translate_text(text: str) -> str:
             
             if response.choices and response.choices[0].message.content:
                 content = response.choices[0].message.content
-                if index > 1:
-                    logger.info(f"✅ Açar #{index} uğurla işə düşdü və çevirdi.")
                 break
                 
         except Exception as e:
-            logger.warning(f"⚠️ Açar #{index} xəta verdi / limitə düşdü: {e}. Növbəti açara keçilir...")
+            logger.warning(f"⚠️ Açar #{index} xəta verdi: {e}. Növbətiyə keçilir...")
 
     if not content:
-        logger.error("❌ Bütün 5 açar da cavab vermədi və ya limitə düşdü!")
-        return ""
+        return "⚠️ Xəta: Heç bir açar cavab vermədi."
 
     try:
         data = json.loads(content)
+        tr = data.get("tr", "")
+        de = data.get("de", "")
+        ru = data.get("ru", "")
+        en = data.get("en", "")
 
-        detected = data.get("detected_lang", "").lower()
-        tr_text = data.get("tr", "")
-        de_text = data.get("de", "")
-        ru_text = data.get("ru", "")
-        en_text = data.get("en", "")
+        result = []
+        if en: result.append(f"🇬🇧 {en}")
+        if de: result.append(f"🇩🇪 {de}")
+        if ru: result.append(f"🇷🇺 {ru}")
+        if tr: result.append(f"🇹🇷 {tr}")
 
-        result_lines = []
-
-        if detected in ["tr", "turkish", "türkçe", "az", "azerice"]:
-            if en_text: result_lines.append(f"🇬🇧 {en_text}")
-            if de_text: result_lines.append(f"🇩🇪 {de_text}")
-            if ru_text: result_lines.append(f"🇷🇺 {ru_text}")
-        elif detected in ["en", "english", "ingilis"]:
-            if tr_text: result_lines.append(f"🇹🇷 {tr_text}")
-            if de_text: result_lines.append(f"🇩🇪 {de_text}")
-            if ru_text: result_lines.append(f"🇷🇺 {ru_text}")
-        elif detected in ["de", "german", "almanca"]:
-            if tr_text: result_lines.append(f"🇹🇷 {tr_text}")
-            if en_text: result_lines.append(f"🇬🇧 {en_text}")
-            if ru_text: result_lines.append(f"🇷🇺 {ru_text}")
-        elif detected in ["ru", "russian", "rusça"]:
-            if tr_text: result_lines.append(f"🇹🇷 {tr_text}")
-            if en_text: result_lines.append(f"🇬🇧 {en_text}")
-            if de_text: result_lines.append(f"🇩🇪 {de_text}")
-        else:
-            if tr_text: result_lines.append(f"🇹🇷 {tr_text}")
-            if en_text: result_lines.append(f"🇬🇧 {en_text}")
-            if de_text: result_lines.append(f"🇩🇪 {de_text}")
-            if ru_text: result_lines.append(f"🇷🇺 {ru_text}")
-
-        return "\n".join(result_lines)
-
+        return "\n".join(result)
     except Exception as e:
-        logger.error("JSON Ayrıştırma hatası: %s", e)
-        return ""
-
-# ============================================================
-# TELEGRAM MESAJ İŞLEYİCİ
-# ============================================================
+        return f"Çeviri xətası: {content}"
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = update.effective_message
@@ -154,50 +107,23 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     text = message.text.strip()
     if not text or text.startswith("/"):
-        return
+        return  # Əmrləri oxumur
 
-    if len(text) > 2000:
-        await message.reply_text("⚠️ Mesaj çok uzun olduğu için çevrilmedi.")
-        return
-
-    try:
-        translated = translate_text(text)
-        if translated:
-            await message.reply_text(translated)
-    except Exception as e:
-        logger.error(f"Mesaj gönderme hatası: {e}")
-
-# ============================================================
-# BOT AÇILIŞ TETİKLEYİCİSİ
-# ============================================================
-
-async def post_init(application):
-    if GROUP_CHAT_ID:
-        try:
-            await application.bot.send_message(
-                chat_id=GROUP_CHAT_ID,
-                text="🤖 Bot aktiv! 5-li avtomatik ehtiyat (Fallback) sistemi ilə işə hazırdır."
-            )
-            logger.info("Bot açılış mesajı gruba gönderildi.")
-        except Exception as e:
-            logger.error(f"Açılış mesajı hatası: {e}")
-
-# ============================================================
-# BOTU BAŞLAT
-# ============================================================
+    translated = translate_text(text)
+    if translated:
+        await message.reply_text(translated)
 
 def main():
     try:
         clear_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/deleteWebhook?drop_pending_updates=True"
         urllib.request.urlopen(clear_url, timeout=5)
-        print("🧹 Eski Webhook temizlendi.")
-    except Exception as ex:
-        print(f"Webhook uyarı: {ex}")
+    except:
+        pass
 
-    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).post_init(post_init).build()
+    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-
-    print("🤖 VIYANA AI (5-Lİ KOTA DÖNGÜLÜ ÇEVİRİ SİSTEMİ) BAŞLATILIYOR...")
+    
+    print("🤖 BOT İŞƏ DÜŞDÜ!")
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
