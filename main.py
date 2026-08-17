@@ -26,12 +26,12 @@ OPENROUTER_API_KEYS = [
     "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",
 ]
 
-# Ehtiyatlı pulsuz modellər siyahısı
+# Aktiv işləyən yeni pulsuz modellər siyahısı
 FREE_MODELS = [
-    "deepseek/deepseek-r1:free",
-    "google/gemma-2-9b-it:free",
-    "meta-llama/llama-3.1-8b-instruct:free",
-    "mistralai/mistral-7b-instruct:free"
+    "deepseek/deepseek-r1-distill-qwen-7b:free",
+    "qwen/qwen-2.5-7b-instruct:free",
+    "microsoft/phi-3-medium-128k-instruct:free",
+    "cognitivecomputations/dolphin-mixtral-8x7b:free"
 ]
 
 SYSTEM_PROMPT = """Sen C2 (Master) seviyesinde profesyonel bir çeviri ve lokalizasyon uzmanısın. Kullanıcının yazdığı metni; deyimleri, mecazları, kültürel bağlamı, tonu ve en ince anlam nuanslarını tamamen koruyarak İngilizce, Almanca, Rusça ve Türkçe dillerine kusursuz bir şekilde çevir. Kelimesi kelimesine değil, hedef dilde anadili olan birinin kuracağı en doğal, akıcı ve profesyonel cümle yapısını kullan.
