@@ -1,7 +1,7 @@
-import os
 import json
 import logging
 import urllib.request
+import urllib.error
 
 from telegram import Update
 from telegram.ext import (
@@ -10,8 +10,6 @@ from telegram.ext import (
     MessageHandler,
     filters,
 )
-
-from openai import OpenAI
 
 # ============================================================
 # 5'Lİ ZİNCİRVARİ EHTİYAT (FALLBACK) GROQ API AÇARLARI
@@ -26,7 +24,6 @@ GROQ_API_KEYS = [
 ]
 
 TELEGRAM_BOT_TOKEN = "8363449973:AAElwMlaNrlKJ7sh8PApYPxWb13YqrHJakU"
-GROUP_CHAT_ID = "" 
 
 if not TELEGRAM_BOT_TOKEN:
     raise RuntimeError("TELEGRAM_BOT_TOKEN bulunamadı.")
@@ -37,7 +34,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-MODEL_NAME = "llama-3.1-8b-instant"
+# Universal və stabil işləyən model adı olaraq dəyişdirildi
+MODEL_NAME = "llama3-8b-8192"
 
 SYSTEM_PROMPT = """Sen profesyonel bir çeviri motorusun. Kullanıcının yazdığı metni algıla ve tam olarak şu JSON formatında İngilizce (en), Almanca (de), Rusça (ru) ve Türkçe (tr) karşılıklarını ver. Başka hiçbir açıklama yazma:
 
@@ -52,31 +50,41 @@ SYSTEM_PROMPT = """Sen profesyonel bir çeviri motorusun. Kullanıcının yazdı
 
 def translate_text(text: str) -> str:
     content = ""
-    
+    url = "https://api.groq.com/openai/v1/chat/completions"
+
     for index, api_key in enumerate(GROQ_API_KEYS, start=1):
         if not api_key:
             continue
             
+        payload = {
+            "model": MODEL_NAME,
+            "messages": [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": text}
+            ],
+            "response_format": {"type": "json_object"},
+            "max_tokens": 400,
+            "temperature": 0.0
+        }
+
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+
         try:
-            client = OpenAI(
-                api_key=api_key,
-                base_url="https://api.groq.com/openai/v1",
-            )
-            response = client.chat.completions.create(
-                model=MODEL_NAME,
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": text},
-                ],
-                response_format={"type": "json_object"},
-                max_tokens=400,
-                temperature=0.0,
+            req = urllib.request.Request(
+                url,
+                data=json.dumps(payload).encode('utf-8'),
+                headers=headers,
+                method='POST'
             )
             
-            if response.choices and response.choices[0].message.content:
-                content = response.choices[0].message.content
-                break
-                
+            with urllib.request.urlopen(req, timeout=10) as response:
+                res_data = json.loads(response.read().decode('utf-8'))
+                content = res_data['choices'][0]['message']['content']
+                if content:
+                    break
         except Exception as e:
             logger.warning(f"⚠️ Açar #{index} xəta verdi: {e}. Növbətiyə keçilir...")
 
@@ -107,7 +115,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     text = message.text.strip()
     if not text or text.startswith("/"):
-        return  # Əmrləri oxumur
+        return
 
     translated = translate_text(text)
     if translated:
