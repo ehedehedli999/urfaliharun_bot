@@ -26,8 +26,8 @@ OPENROUTER_API_KEYS = [
     "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",
 ]
 
-# Hal-hazırda pulsuz işləyən model ilə əvəz olundu
-MODEL_NAME = "deepseek/deepseek-r1:free"
+# 100% aktiv və pulsuz olan Google Gemma modeli
+MODEL_NAME = "google/gemma-2-9b-it:free"
 
 SYSTEM_PROMPT = """Sen C2 (Master) seviyesinde profesyonel bir çeviri ve lokalizasyon uzmanısın. Kullanıcının yazdığı metni; deyimleri, mecazları, kültürel bağlamı, tonu ve en ince anlam nuanslarını tamamen koruyarak İngilizce, Almanca, Rusça ve Türkçe dillerine kusursuz bir şekilde çevir. Kelimesi kelimesine değil, hedef dilde anadili olan birinin kuracağı en doğal, akıcı ve profesyonel cümle yapısını kullan.
 Cevabını tam olarak bu formatta ver, başka hiçbir açıklama veya metin ekleme:
@@ -87,3 +87,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
