@@ -33,7 +33,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-MODEL_NAME = "llama-3.1-8b-instant"
+# Aktiv və stabil model adı
+MODEL_NAME = "llama3-8b-8192"
 
 SYSTEM_PROMPT = """Sen profesyonel bir çeviri motorusun. Kullanıcının yazdığı metni algıla ve tam olarak şu JSON formatında İngilizce (en), Almanca (de), Rusça (ru) ve Türkçe (tr) karşılıklarını ver. Başka hiçbir açıklama yazma:
 
@@ -65,7 +66,6 @@ def translate_text(text: str) -> str:
             "temperature": 0.0
         }
 
-        # Cloudflare blokunu keçmək üçün User-Agent əlavə olundu
         headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
