@@ -26,7 +26,7 @@ OPENROUTER_API_KEYS = [
     "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",
 ]
 
-# Ehtiyatlı pulsuz modellər siyahısı (biri işləməsə avtomatik digərinə keçəcək)
+# Ehtiyatlı pulsuz modellər siyahısı
 FREE_MODELS = [
     "deepseek/deepseek-r1:free",
     "google/gemma-2-9b-it:free",
@@ -64,7 +64,7 @@ def translate_with_openrouter(text: str) -> str:
                 
                 content = completion.choices[0].message.content
                 if content:
-                    logger.info( uğurla işlədi: {model_name} (Açar #{index}))
+                    logger.info(f"Uğurla işlədi: {model_name} (Açar #{index})")
                     return content.strip()
                     
             except Exception as e:
